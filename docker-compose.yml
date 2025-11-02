@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # PostgreSQL for PostgreSQL provider testing
+  postgres:
+    image: postgres:15
+    container_name: leaderelection-postgres
+    environment:
+      POSTGRES_DB: leaderelection
+      POSTGRES_USER: leaderelection
+      POSTGRES_PASSWORD: leaderelection123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leaderelection -d leaderelection"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ZooKeeper for ZooKeeper provider testing
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: leaderelection-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Redis provider testing
+  redis:
+    image: redis:7-alpine
+    container_name: leaderelection-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Consul for Consul provider testing
+  consul:
+    image: consul:1.16
+    container_name: leaderelection-consul
+    ports:
+      - "8500:8500"
+    environment:
+      CONSUL_BIND_INTERFACE: eth0
+    command: agent -server -bootstrap -ui -client=0.0.0.0
+    volumes:
+      - consul_data:/consul/data
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Azurite for Azure Blob Storage provider testing
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: leaderelection-azurite
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+    volumes:
+      - azurite_data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "10000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # SQL Server for SQL Server provider testing
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: leaderelection-sqlserver
+    environment:
+      SA_PASSWORD: LeaderElection123!
+      ACCEPT_EULA: Y
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P LeaderElection123! -Q 'SELECT 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
+  zookeeper_data:
+  zookeeper_logs:
+  redis_data:
+  consul_data:
+  azurite_data:
+  sqlserver_data:

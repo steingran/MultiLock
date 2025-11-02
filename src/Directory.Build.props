@@ -1,0 +1,10 @@
+﻿<Project>
+  <ItemGroup>
+    <PackageReference Include="MinVer" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <MinVerMinimumMajorMinor>1.0</MinVerMinimumMajorMinor>
+    <MinVerDefaultPreReleaseIdentifiers>preview.0</MinVerDefaultPreReleaseIdentifiers>
+  </PropertyGroup>
+</Project>

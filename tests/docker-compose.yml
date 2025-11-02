@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  # SQL Server for testing SQL Server provider
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: leaderelection-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=LeaderElection123!
+      - MSSQL_PID=Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    command:
+      - /bin/bash
+      - -c
+      - |
+        /opt/mssql/bin/sqlservr &
+        pid=$$!
+        echo "Waiting for SQL Server to start..."
+        for i in {1..60}; do
+          if /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "SELECT 1" > /dev/null 2>&1; then
+            echo "SQL Server is ready!"
+            break
+          fi
+          echo "Waiting... ($$i/60)"
+          sleep 1
+        done
+        echo "Creating leaderelection database..."
+        /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -C -Q "IF NOT EXISTS (SELECT name FROM sys.databases WHERE name = N'leaderelection') CREATE DATABASE leaderelection"
+        echo "Database created!"
+        wait $$pid
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P LeaderElection123! -C -Q 'SELECT 1' && /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P LeaderElection123! -C -Q 'SELECT name FROM sys.databases WHERE name = N''leaderelection''' | grep -q leaderelection"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Redis for testing Redis provider
+  redis:
+    image: redis:7-alpine
+    container_name: leaderelection-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # PostgreSQL for general testing (if needed)
+  postgres:
+    image: postgres:15-alpine
+    container_name: leaderelection-postgres
+    environment:
+      - POSTGRES_DB=leaderelection
+      - POSTGRES_USER=leaderelection
+      - POSTGRES_PASSWORD=leaderelection123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leaderelection -d leaderelection"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Consul for testing Consul provider
+  consul:
+    image: hashicorp/consul:1.17.3
+    container_name: leaderelection-consul
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    command: consul agent -dev -client=0.0.0.0 -ui
+    volumes:
+      - consul_data:/consul/data
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ZooKeeper for testing ZooKeeper provider
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: leaderelection-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo 'srvr' | nc localhost 2181 | grep -q 'Mode: standalone'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Azurite for testing Azure Blob Storage provider
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:latest
+    container_name: leaderelection-azurite
+    ports:
+      - "10000:10000"  # Blob service
+      - "10001:10001"  # Queue service
+      - "10002:10002"  # Table service
+    volumes:
+      - azurite_data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --debug /data/debug.log
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10000/devstoreaccount1?comp=properties&restype=service"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  sqlserver_data:
+    driver: local
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  consul_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  azurite_data:
+    driver: local
+
+networks:
+  default:
+    name: leaderelection-network

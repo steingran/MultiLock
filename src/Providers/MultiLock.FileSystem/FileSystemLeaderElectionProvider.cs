@@ -1,0 +1,323 @@
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MultiLock.Exceptions;
+
+namespace MultiLock.FileSystem;
+
+/// <summary>
+/// File System implementation of the leader election provider.
+/// Uses file locking to coordinate leadership across processes on the same machine.
+/// </summary>
+public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
+{
+    private readonly FileSystemLeaderElectionOptions options;
+    private readonly ILogger<FileSystemLeaderElectionProvider> logger;
+    private readonly SemaphoreSlim initializationLock = new(1, 1);
+    private volatile bool isInitialized;
+    private volatile bool isDisposed;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="FileSystemLeaderElectionProvider"/> class.
+    /// </summary>
+    /// <param name="options">The file system options.</param>
+    /// <param name="logger">The logger.</param>
+    public FileSystemLeaderElectionProvider(
+        IOptions<FileSystemLeaderElectionOptions> options,
+        ILogger<FileSystemLeaderElectionProvider> logger)
+    {
+        this.options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        this.options.Validate();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryAcquireLeadershipAsync(
+        string electionGroup,
+        string participantId,
+        IReadOnlyDictionary<string, string> metadata,
+        TimeSpan lockTimeout,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken);
+
+        string filePath = GetLeaderFilePath(electionGroup);
+
+        try
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset expiryTime = now.Subtract(lockTimeout);
+
+            // Check if there's an existing leader file
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    string existingContent = await File.ReadAllTextAsync(filePath, cancellationToken);
+                    LeaderFileContent? existingLeader = JsonSerializer.Deserialize<LeaderFileContent>(existingContent);
+
+                    if (existingLeader != null &&
+                        existingLeader.LastHeartbeat >= expiryTime &&
+                        existingLeader.LeaderId != participantId)
+                    {
+                        logger.LogDebug("Leadership acquisition failed for participant {ParticipantId} in group {ElectionGroup}. Current leader: {CurrentLeader}",
+                            participantId, electionGroup, existingLeader.LeaderId);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Error reading existing leader file for group {ElectionGroup}", electionGroup);
+                    // Continue with acquisition attempt
+                }
+            }
+
+            // Try to acquire leadership by creating/updating the file
+            var leaderContent = new LeaderFileContent
+            {
+                LeaderId = participantId,
+                LeadershipAcquiredAt = now,
+                LastHeartbeat = now,
+                Metadata = new Dictionary<string, string>(metadata)
+            };
+
+            string json = JsonSerializer.Serialize(leaderContent, new JsonSerializerOptions { WriteIndented = true });
+
+            // Use FileShare.None to ensure exclusive access during write
+            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            await using (var writer = new StreamWriter(fileStream))
+            {
+                await writer.WriteAsync(json);
+                await writer.FlushAsync(cancellationToken);
+            }
+
+            logger.LogInformation("Successfully acquired leadership for participant {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error acquiring leadership for participant {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+            throw new LeaderElectionProviderException("Failed to acquire leadership", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ReleaseLeadershipAsync(
+        string electionGroup,
+        string participantId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken);
+
+        string filePath = GetLeaderFilePath(electionGroup);
+
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                // Verify we are the current leader before deleting
+                string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+                LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
+
+                if (leader?.LeaderId == participantId)
+                {
+                    File.Delete(filePath);
+                    logger.LogInformation("Released leadership for participant {ParticipantId} in group {ElectionGroup}",
+                        participantId, electionGroup);
+                }
+                else
+                {
+                    logger.LogWarning("Cannot release leadership for participant {ParticipantId} in group {ElectionGroup} - not the current leader",
+                        participantId, electionGroup);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error releasing leadership for participant {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+            throw new LeaderElectionProviderException("Failed to release leadership", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateHeartbeatAsync(
+        string electionGroup,
+        string participantId,
+        IReadOnlyDictionary<string, string> metadata,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken);
+
+        string filePath = GetLeaderFilePath(electionGroup);
+
+        try
+        {
+            if (!File.Exists(filePath))
+                return false;
+
+            string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
+
+            if (leader?.LeaderId != participantId)
+                return false;
+
+            // Update heartbeat
+            leader.LastHeartbeat = DateTimeOffset.UtcNow;
+            leader.Metadata = new Dictionary<string, string>(metadata);
+
+            string json = JsonSerializer.Serialize(leader, new JsonSerializerOptions { WriteIndented = true });
+
+            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            await using (var writer = new StreamWriter(fileStream))
+            {
+                await writer.WriteAsync(json);
+                await writer.FlushAsync(cancellationToken);
+            }
+
+            logger.LogDebug("Updated heartbeat for leader {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error updating heartbeat for participant {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+            throw new LeaderElectionProviderException("Failed to update heartbeat", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<LeaderInfo?> GetCurrentLeaderAsync(
+        string electionGroup,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken);
+
+        string filePath = GetLeaderFilePath(electionGroup);
+
+        try
+        {
+            if (!File.Exists(filePath))
+                return null;
+
+            string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
+
+            if (leader == null)
+                return null;
+
+            return new LeaderInfo(
+                leader.LeaderId,
+                leader.LeadershipAcquiredAt,
+                leader.LastHeartbeat,
+                leader.Metadata);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error getting current leader for group {ElectionGroup}", electionGroup);
+            throw new LeaderElectionProviderException("Failed to get current leader", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> IsLeaderAsync(
+        string electionGroup,
+        string participantId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await EnsureInitializedAsync(cancellationToken);
+
+        string filePath = GetLeaderFilePath(electionGroup);
+
+        try
+        {
+            if (!File.Exists(filePath))
+                return false;
+
+            string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
+
+            return leader?.LeaderId == participantId;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error checking leadership for participant {ParticipantId} in group {ElectionGroup}",
+                participantId, electionGroup);
+            throw new LeaderElectionProviderException("Failed to check leadership", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HealthCheckAsync(CancellationToken cancellationToken = default)
+    {
+        if (isDisposed)
+            return false;
+
+        try
+        {
+            await EnsureInitializedAsync(cancellationToken);
+            return Directory.Exists(options.DirectoryPath);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Health check failed for File System provider");
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (isDisposed) return;
+        isDisposed = true;
+        initializationLock.Dispose();
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (!isDisposed) return;
+        throw new ObjectDisposedException(nameof(FileSystemLeaderElectionProvider));
+    }
+
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
+    {
+        if (isInitialized)
+            return;
+
+        await initializationLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (isInitialized)
+                return;
+
+            if (options.AutoCreateDirectory && !Directory.Exists(options.DirectoryPath))
+            {
+                Directory.CreateDirectory(options.DirectoryPath);
+                logger.LogInformation("Created leader election directory: {DirectoryPath}", options.DirectoryPath);
+            }
+
+            isInitialized = true;
+        }
+        finally
+        {
+            initializationLock.Release();
+        }
+    }
+
+    private string GetLeaderFilePath(string electionGroup)
+    {
+        string fileName = $"{electionGroup}{options.FileExtension}";
+        return Path.Combine(options.DirectoryPath, fileName);
+    }
+}
