@@ -26,20 +26,13 @@ jobs:
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
 
-    - name: Start Docker Compose services
-      run: docker compose up -d
-      working-directory: ./tests
-
-    - name: Wait for services to be healthy
-      run: |
-        echo "Waiting for services to be ready..."
-        sleep 30
-        docker compose ps
+    - name: Start Docker Compose services and wait for health
+      run: docker compose up -d --wait
       working-directory: ./tests
 
     - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
-      continue-on-error: true
+      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s -d run.log --logger "trx;LogFileName=test-results.trx"
+      timeout-minutes: 10
 
     - name: Test Report
       uses: dorny/test-reporter@v1
