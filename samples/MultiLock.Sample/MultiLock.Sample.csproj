@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MultiLock\MultiLock.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.InMemory\MultiLock.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.FileSystem\MultiLock.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.Redis\MultiLock.Redis.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.SqlServer\MultiLock.SqlServer.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.PostgreSQL\MultiLock.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.AzureBlobStorage\MultiLock.AzureBlobStorage.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.Consul\MultiLock.Consul.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.ZooKeeper\MultiLock.ZooKeeper.csproj" />
+  </ItemGroup>
+
+</Project>

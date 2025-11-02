@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+        <PackageId>MultiLock.AzureBlobStorage</PackageId>
+        <PackageVersion>1.0.0</PackageVersion>
+        <Authors>MultiLock.Net Contributors</Authors>
+        <Description>Azure Blob Storage provider for MultiLock.Net framework</Description>
+        <PackageTags>leader-election;distributed-systems;azure;blob-storage</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/steingran/MultiLock.Net</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Azure.Storage.Blobs" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+        <PackageReference Include="Microsoft.Extensions.Options" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\MultiLock\MultiLock.csproj">
+        <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+        <IncludeAssets>MultiLock.Net.dll</IncludeAssets>
+      </ProjectReference>
+    </ItemGroup>
+  
+    <Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
+      <ItemGroup>
+        <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
+      </ItemGroup>
+    </Target>
+
+</Project>

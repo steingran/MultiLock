@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/Providers/">
+    <Project Path="src\Providers\MultiLock.AzureBlobStorage\MultiLock.AzureBlobStorage.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.Consul\MultiLock.Consul.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.FileSystem\MultiLock.FileSystem.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.InMemory\MultiLock.InMemory.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.PostgreSQL\MultiLock.PostgreSQL.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.Redis\MultiLock.Redis.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.SqlServer\MultiLock.SqlServer.csproj" Type="Classic C#" />
+    <Project Path="src\Providers\MultiLock.ZooKeeper\MultiLock.ZooKeeper.csproj" Type="Classic C#" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="samples\MultiLock.Sample\MultiLock.Sample.csproj" Type="Classic C#" />
+  </Folder>
+  <Folder Name="/Tests/">
+    <Project Path="tests\MultiLock.IntegrationTests\MultiLock.IntegrationTests.csproj" Type="Classic C#" />
+    <Project Path="tests\MultiLock.Tests\MultiLock.Tests.csproj" Type="Classic C#" />
+  </Folder>
+  <Folder Name="/_Files/">
+    <File Path="tests\docker-compose.yml" />
+    <File Path=".editorconfig" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="src\MultiLock\MultiLock.csproj" />
+</Solution>
