@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   # SQL Server for testing SQL Server provider
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: leaderelection-sqlserver
+    container_name: multilock-sqlserver
     environment:
       - ACCEPT_EULA=Y
       - SA_PASSWORD=LeaderElection123!
@@ -34,15 +32,15 @@ services:
         wait $$pid
     healthcheck:
       test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P LeaderElection123! -C -Q 'SELECT 1' && /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P LeaderElection123! -C -Q 'SELECT name FROM sys.databases WHERE name = N''leaderelection''' | grep -q leaderelection"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 10s
+      timeout: 5s
+      retries: 10
       start_period: 60s
 
   # Redis for testing Redis provider
   redis:
     image: redis:7-alpine
-    container_name: leaderelection-redis
+    container_name: multilock-redis
     ports:
       - "6379:6379"
     command: redis-server --appendonly yes
@@ -50,14 +48,15 @@ services:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # PostgreSQL for general testing (if needed)
   postgres:
     image: postgres:15-alpine
-    container_name: leaderelection-postgres
+    container_name: multilock-postgres
     environment:
       - POSTGRES_DB=leaderelection
       - POSTGRES_USER=leaderelection
@@ -68,14 +67,15 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U leaderelection -d leaderelection"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # Consul for testing Consul provider
   consul:
     image: hashicorp/consul:1.17.3
-    container_name: leaderelection-consul
+    container_name: multilock-consul
     ports:
       - "8500:8500"
       - "8600:8600/udp"
@@ -84,14 +84,15 @@ services:
       - consul_data:/consul/data
     healthcheck:
       test: ["CMD", "consul", "members"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
 
   # ZooKeeper for testing ZooKeeper provider
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
-    container_name: leaderelection-zookeeper
+    container_name: multilock-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -102,14 +103,15 @@ services:
       - zookeeper_logs:/var/lib/zookeeper/log
     healthcheck:
       test: ["CMD", "bash", "-c", "echo 'srvr' | nc localhost 2181 | grep -q 'Mode: standalone'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   # Azurite for testing Azure Blob Storage provider
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite:latest
-    container_name: leaderelection-azurite
+    container_name: multilock-azurite
     ports:
       - "10000:10000"  # Blob service
       - "10001:10001"  # Queue service
@@ -118,10 +120,35 @@ services:
       - azurite_data:/data
     command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --location /data --debug /data/debug.log
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:10000/devstoreaccount1?comp=properties&restype=service"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD-SHELL", "node -e \"require('net').connect(10000, 'localhost').on('connect', () => process.exit(0)).on('error', () => process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # Healthcheck service - only healthy when all other services are healthy
+  healthcheck:
+    image: alpine:latest
+    container_name: multilock-healthcheck
+    command: sh -c "echo 'All services are healthy' && sleep infinity"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+      zookeeper:
+        condition: service_healthy
+      azurite:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "echo", "healthy"]
+      interval: 5s
+      timeout: 3s
+      retries: 1
 
 volumes:
   sqlserver_data:
@@ -141,4 +168,4 @@ volumes:
 
 networks:
   default:
-    name: leaderelection-network
+    name: multilock-network
