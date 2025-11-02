@@ -1,4 +1,4 @@
-﻿name: Build and Test
+name: Build and Test
 
 on:
   push:
@@ -27,14 +27,14 @@ jobs:
       run: dotnet build --configuration Release --no-restore
 
     - name: Start Docker Compose services
-      run: docker-compose up -d
+      run: docker compose up -d
       working-directory: ./tests
 
     - name: Wait for services to be healthy
       run: |
         echo "Waiting for services to be ready..."
         sleep 30
-        docker-compose ps
+        docker compose ps
       working-directory: ./tests
 
     - name: Run tests
@@ -52,6 +52,6 @@ jobs:
 
     - name: Stop Docker Compose services
       if: always()
-      run: docker-compose down
+      run: docker compose down
       working-directory: ./tests
 
