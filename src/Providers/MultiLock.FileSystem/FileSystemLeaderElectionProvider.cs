@@ -44,6 +44,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
+        EnsureDirectoryExists();
 
         try
         {
@@ -157,6 +158,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
+        EnsureDirectoryExists();
 
         try
         {
@@ -319,5 +321,14 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
     {
         string fileName = $"{electionGroup}{options.FileExtension}";
         return Path.Combine(options.DirectoryPath, fileName);
+    }
+
+    private void EnsureDirectoryExists()
+    {
+        if (!Directory.Exists(options.DirectoryPath))
+        {
+            Directory.CreateDirectory(options.DirectoryPath);
+            logger.LogDebug("Created leader election directory: {DirectoryPath}", options.DirectoryPath);
+        }
     }
 }
