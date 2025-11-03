@@ -508,12 +508,19 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
     {
         try
         {
-            using IHost host = CreateHost("test");
-            await host.StartAsync();
-            ILeaderElectionProvider provider = host.Services.GetRequiredService<ILeaderElectionProvider>();
-            bool isHealthy = await provider.HealthCheckAsync();
-            await host.StopAsync();
-            return isHealthy;
+            var options = new ZooKeeperLeaderElectionOptions
+            {
+                ConnectionString = connectionString,
+                RootPath = "/health-check",
+                SessionTimeout = TimeSpan.FromSeconds(30),
+                ConnectionTimeout = TimeSpan.FromSeconds(10)
+            };
+
+            using var provider = new ZooKeeperLeaderElectionProvider(
+                Options.Create(options),
+                logger);
+
+            return await provider.HealthCheckAsync();
         }
         catch
         {
