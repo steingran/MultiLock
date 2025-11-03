@@ -543,9 +543,14 @@ public class LeadershipExtensionMethodsTests
         await cts.CancelAsync();
         try { await eventTask; } catch (OperationCanceledException) { }
 
-        // Assert - Now safe to access events collection without lock since eventTask has completed
-        events.ShouldContain(e => e.BecameLeader);
-        events.Last().BecameLeader.ShouldBeTrue();
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.ShouldContain(e => e.BecameLeader);
+        eventSnapshot.Last().BecameLeader.ShouldBeTrue();
 
         // ReSharper disable once MethodSupportsCancellation
         await service.StopAsync();
@@ -591,9 +596,14 @@ public class LeadershipExtensionMethodsTests
         await cts.CancelAsync();
         try { await eventTask; } catch (OperationCanceledException) { }
 
-        // Assert - Now safe to access events collection without lock since eventTask has completed
-        events.ShouldContain(e => e.BecameLeader);
-        events.ShouldAllBe(e => e.CurrentStatus.IsLeader || e.LostLeadership);
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.ShouldContain(e => e.BecameLeader);
+        eventSnapshot.ShouldAllBe(e => e.CurrentStatus.IsLeader || e.LostLeadership);
 
         await services.DisposeAsync();
     }
@@ -744,10 +754,15 @@ public class LeadershipExtensionMethodsTests
         await cts.CancelAsync();
         try { await eventTask; } catch (OperationCanceledException) { }
 
-        // Assert - Now safe to access events collection without lock since eventTask has completed
-        events.Count.ShouldBe(2);
-        events.ShouldContain(e => e.BecameLeader);
-        events.ShouldContain(e => e.LostLeadership);
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBe(2);
+        eventSnapshot.ShouldContain(e => e.BecameLeader);
+        eventSnapshot.ShouldContain(e => e.LostLeadership);
 
         await services.DisposeAsync();
     }
