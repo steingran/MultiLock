@@ -47,7 +47,7 @@ public class LeadershipExtensionMethodsTests
 
         // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
 
         // Assert - Now safe to access events collection without lock since eventTask has completed
         events.ShouldHaveSingleItem();
@@ -541,7 +541,7 @@ public class LeadershipExtensionMethodsTests
 
         // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
 
         // Assert - Take snapshot of events while holding lock to ensure thread-safety
         LeadershipChangedEventArgs[] eventSnapshot;
@@ -594,7 +594,7 @@ public class LeadershipExtensionMethodsTests
 
         // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
 
         // Assert - Take snapshot of events while holding lock to ensure thread-safety
         LeadershipChangedEventArgs[] eventSnapshot;
@@ -752,7 +752,7 @@ public class LeadershipExtensionMethodsTests
 
         // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
 
         // Assert - Take snapshot of events while holding lock to ensure thread-safety
         LeadershipChangedEventArgs[] eventSnapshot;
