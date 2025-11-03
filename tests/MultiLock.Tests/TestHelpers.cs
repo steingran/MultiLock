@@ -45,6 +45,29 @@ public static class TestHelpers
     }
 
     /// <summary>
+    /// Waits for an async condition to be met within a specified timeout period.
+    /// </summary>
+    /// <param name="condition">The async condition to check.</param>
+    /// <param name="timeout">The maximum time to wait for the condition.</param>
+    /// <param name="cancellationToken">A token to cancel the wait operation.</param>
+    /// <exception cref="TimeoutException">Thrown when the condition is not met within the timeout period.</exception>
+    public static async Task WaitForConditionAsync(Func<Task<bool>> condition, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            bool conditionMet = await condition();
+
+            if (conditionMet)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Creates a ServiceProvider configured with a leader election service for testing.
     /// </summary>
     /// <param name="participantId">The participant ID for the leader election service.</param>
