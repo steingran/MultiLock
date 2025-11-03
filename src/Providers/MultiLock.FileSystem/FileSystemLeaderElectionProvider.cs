@@ -56,7 +56,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             {
                 try
                 {
-                    string existingContent = await File.ReadAllTextAsync(filePath, cancellationToken);
+                    string existingContent = await ReadLeaderFileAsync(filePath, cancellationToken);
                     LeaderFileContent? existingLeader = JsonSerializer.Deserialize<LeaderFileContent>(existingContent);
 
                     if (existingLeader != null &&
@@ -68,10 +68,16 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
                         return false;
                     }
                 }
+                catch (IOException ex)
+                {
+                    logger.LogDebug(ex, "Could not read leader file for group {ElectionGroup} - file may be locked by current leader", electionGroup);
+                    // File is locked by another process (current leader), so we cannot acquire leadership
+                    return false;
+                }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex, "Error reading existing leader file for group {ElectionGroup}", electionGroup);
-                    // Continue with acquisition attempt
+                    // Continue with acquisition attempt for other errors
                 }
             }
 
@@ -86,18 +92,29 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
 
             string json = JsonSerializer.Serialize(leaderContent, new JsonSerializerOptions { WriteIndented = true });
 
-            // Use FileShare.None to ensure exclusive access during write
-            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
-            await using (var writer = new StreamWriter(fileStream))
+            try
             {
-                await writer.WriteAsync(json);
-                await writer.FlushAsync(cancellationToken);
+                // Use FileShare.Read to allow other processes to read while we hold the lock
+                // This prevents read errors while still maintaining exclusive write access
+                await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                await using (var writer = new StreamWriter(fileStream))
+                {
+                    await writer.WriteAsync(json);
+                    await writer.FlushAsync(cancellationToken);
+                }
+
+                logger.LogInformation("Successfully acquired leadership for participant {ParticipantId} in group {ElectionGroup}",
+                    participantId, electionGroup);
+
+                return true;
             }
-
-            logger.LogInformation("Successfully acquired leadership for participant {ParticipantId} in group {ElectionGroup}",
-                participantId, electionGroup);
-
-            return true;
+            catch (IOException ex)
+            {
+                // File is locked by another process (current leader), so we cannot acquire leadership
+                logger.LogDebug(ex, "Could not acquire leadership for participant {ParticipantId} in group {ElectionGroup} - file is locked by current leader",
+                    participantId, electionGroup);
+                return false;
+            }
         }
         catch (Exception ex)
         {
@@ -123,14 +140,24 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             if (File.Exists(filePath))
             {
                 // Verify we are the current leader before deleting
-                string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+                string content = await ReadLeaderFileAsync(filePath, cancellationToken);
                 LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
 
                 if (leader?.LeaderId == participantId)
                 {
-                    File.Delete(filePath);
-                    logger.LogInformation("Released leadership for participant {ParticipantId} in group {ElectionGroup}",
-                        participantId, electionGroup);
+                    try
+                    {
+                        File.Delete(filePath);
+                        logger.LogInformation("Released leadership for participant {ParticipantId} in group {ElectionGroup}",
+                            participantId, electionGroup);
+                    }
+                    catch (IOException ex)
+                    {
+                        // File is locked by another process - this can happen during concurrent operations
+                        // Log as debug since this is not necessarily an error condition
+                        logger.LogDebug(ex, "Could not delete leader file for participant {ParticipantId} in group {ElectionGroup} - file is locked",
+                            participantId, electionGroup);
+                    }
                 }
                 else
                 {
@@ -138,6 +165,12 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
                         participantId, electionGroup);
                 }
             }
+        }
+        catch (IOException ex)
+        {
+            // File is locked - log as debug since this is expected during concurrent operations
+            logger.LogDebug(ex, "Could not read leader file for participant {ParticipantId} in group {ElectionGroup} - file is locked",
+                participantId, electionGroup);
         }
         catch (Exception ex)
         {
@@ -165,7 +198,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             if (!File.Exists(filePath))
                 return false;
 
-            string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            string content = await ReadLeaderFileAsync(filePath, cancellationToken);
             LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
 
             if (leader?.LeaderId != participantId)
@@ -177,7 +210,8 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
 
             string json = JsonSerializer.Serialize(leader, new JsonSerializerOptions { WriteIndented = true });
 
-            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            // Use FileShare.Read to allow other processes to read while we hold the lock
+            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read))
             await using (var writer = new StreamWriter(fileStream))
             {
                 await writer.WriteAsync(json);
@@ -212,7 +246,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             if (!File.Exists(filePath))
                 return null;
 
-            string content = await File.ReadAllTextAsync(filePath, cancellationToken);
+            string content = await ReadLeaderFileAsync(filePath, cancellationToken);
             LeaderFileContent? leader = JsonSerializer.Deserialize<LeaderFileContent>(content);
 
             if (leader == null)
@@ -330,5 +364,21 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             Directory.CreateDirectory(options.DirectoryPath);
             logger.LogDebug("Created leader election directory: {DirectoryPath}", options.DirectoryPath);
         }
+    }
+
+    /// <summary>
+    /// Reads the leader file content with FileShare.ReadWrite to allow reading even when the file is locked for writing.
+    /// </summary>
+    private static async Task<string> ReadLeaderFileAsync(string filePath, CancellationToken cancellationToken)
+    {
+        // Use FileShare.ReadWrite to allow reading even when another process has the file open for writing
+        // This is necessary on Linux where file locking is more strict
+        await using var fileStream = new FileStream(
+            filePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite);
+        using var reader = new StreamReader(fileStream);
+        return await reader.ReadToEndAsync(cancellationToken);
     }
 }
