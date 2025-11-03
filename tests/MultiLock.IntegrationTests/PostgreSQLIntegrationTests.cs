@@ -363,21 +363,19 @@ public class PostgreSqlIntegrationTests : IAsyncLifetime
             .Build();
     }
 
-    private static async Task<bool> IsPostgreSqlAvailableAsync()
+    private async Task<bool> IsPostgreSqlAvailableAsync()
     {
         try
         {
             var options = new PostgreSqlLeaderElectionOptions
             {
                 ConnectionString = connectionString,
-                TableName = "health_check",
-                HeartbeatInterval = TimeSpan.FromSeconds(30),
-                LeaderTimeout = TimeSpan.FromSeconds(60)
+                TableName = "health_check"
             };
 
             using var provider = new PostgreSqlLeaderElectionProvider(
                 Options.Create(options),
-                NullLogger<PostgreSqlLeaderElectionProvider>.Instance);
+                logger);
 
             return await provider.HealthCheckAsync();
         }

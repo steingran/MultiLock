@@ -27,7 +27,7 @@ public class SqlServerIntegrationTests : IAsyncLifetime
     {
         // Wait for SQL Server to be ready
         await TestHelpers.WaitForConditionAsync(
-            () => IsSqlServerAvailableAsync().GetAwaiter().GetResult(),
+            IsSqlServerAvailableAsync,
             TimeSpan.FromSeconds(30),
             CancellationToken.None);
     }
@@ -411,21 +411,19 @@ public class SqlServerIntegrationTests : IAsyncLifetime
             .Build();
     }
 
-    private static async Task<bool> IsSqlServerAvailableAsync()
+    private async Task<bool> IsSqlServerAvailableAsync()
     {
         try
         {
             var options = new SqlServerLeaderElectionOptions
             {
                 ConnectionString = connectionString,
-                TableName = "health_check",
-                HeartbeatInterval = TimeSpan.FromSeconds(30),
-                LeaderTimeout = TimeSpan.FromSeconds(60)
+                TableName = "health_check"
             };
 
             using var provider = new SqlServerLeaderElectionProvider(
                 Options.Create(options),
-                NullLogger<SqlServerLeaderElectionProvider>.Instance);
+                logger);
 
             return await provider.HealthCheckAsync();
         }

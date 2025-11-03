@@ -28,7 +28,7 @@ public class RedisIntegrationTests : IAsyncLifetime
     {
         // Wait for Redis to be ready
         await TestHelpers.WaitForConditionAsync(
-            () => IsRedisAvailableAsync().GetAwaiter().GetResult(),
+            IsRedisAvailableAsync,
             TimeSpan.FromSeconds(10),
             CancellationToken.None);
     }

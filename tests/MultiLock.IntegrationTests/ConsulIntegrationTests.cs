@@ -28,7 +28,7 @@ public class ConsulIntegrationTests : IAsyncLifetime
     {
         // Wait for Consul to be ready
         await TestHelpers.WaitForConditionAsync(
-            () => IsConsulAvailableAsync().GetAwaiter().GetResult(),
+            IsConsulAvailableAsync,
             TimeSpan.FromSeconds(10),
             CancellationToken.None);
     }
