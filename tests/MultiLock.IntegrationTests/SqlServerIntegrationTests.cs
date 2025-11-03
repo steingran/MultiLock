@@ -415,12 +415,19 @@ public class SqlServerIntegrationTests : IAsyncLifetime
     {
         try
         {
-            using IHost host = CreateHost("test");
-            await host.StartAsync();
-            ILeaderElectionProvider provider = host.Services.GetRequiredService<ILeaderElectionProvider>();
-            bool isHealthy = await provider.HealthCheckAsync();
-            await host.StopAsync();
-            return isHealthy;
+            var options = new SqlServerLeaderElectionOptions
+            {
+                ConnectionString = connectionString,
+                TableName = "health_check",
+                HeartbeatInterval = TimeSpan.FromSeconds(30),
+                LeaderTimeout = TimeSpan.FromSeconds(60)
+            };
+
+            using var provider = new SqlServerLeaderElectionProvider(
+                Options.Create(options),
+                NullLogger<SqlServerLeaderElectionProvider>.Instance);
+
+            return await provider.HealthCheckAsync();
         }
         catch
         {
