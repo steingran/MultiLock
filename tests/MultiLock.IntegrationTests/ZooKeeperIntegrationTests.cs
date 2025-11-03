@@ -29,7 +29,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
     {
         // Wait for ZooKeeper to be ready
         await TestHelpers.WaitForConditionAsync(
-            () => IsZooKeeperAvailableAsync().GetAwaiter().GetResult(),
+            IsZooKeeperAvailableAsync,
             TimeSpan.FromSeconds(10),
             CancellationToken.None);
     }

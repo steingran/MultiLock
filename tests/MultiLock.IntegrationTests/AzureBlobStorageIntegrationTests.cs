@@ -29,7 +29,7 @@ public class AzureBlobStorageIntegrationTests : IAsyncLifetime
     {
         // Wait for Azurite to be ready
         await TestHelpers.WaitForConditionAsync(
-            () => IsAzuriteAvailableAsync().GetAwaiter().GetResult(),
+            IsAzuriteAvailableAsync,
             TimeSpan.FromSeconds(10),
             CancellationToken.None);
     }
