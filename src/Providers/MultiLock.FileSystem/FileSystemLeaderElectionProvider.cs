@@ -96,12 +96,10 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             {
                 // Use FileShare.Read to allow other processes to read while we hold the lock
                 // This prevents read errors while still maintaining exclusive write access
-                await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read))
-                await using (var writer = new StreamWriter(fileStream))
-                {
-                    await writer.WriteAsync(json);
-                    await writer.FlushAsync(cancellationToken);
-                }
+                await using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read);
+                await using var writer = new StreamWriter(fileStream);
+                await writer.WriteAsync(json);
+                await writer.FlushAsync(cancellationToken);
 
                 logger.LogInformation("Successfully acquired leadership for participant {ParticipantId} in group {ElectionGroup}",
                     participantId, electionGroup);
@@ -211,12 +209,10 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
             string json = JsonSerializer.Serialize(leader, new JsonSerializerOptions { WriteIndented = true });
 
             // Use FileShare.Read to allow other processes to read while we hold the lock
-            await using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read))
-            await using (var writer = new StreamWriter(fileStream))
-            {
-                await writer.WriteAsync(json);
-                await writer.FlushAsync(cancellationToken);
-            }
+            await using var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read);
+            await using var writer = new StreamWriter(fileStream);
+            await writer.WriteAsync(json);
+            await writer.FlushAsync(cancellationToken);
 
             logger.LogDebug("Updated heartbeat for leader {ParticipantId} in group {ElectionGroup}",
                 participantId, electionGroup);
