@@ -43,6 +43,17 @@ jobs:
         reporter: dotnet-trx
         fail-on-error: true
 
+    - name: Upload test artifacts on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: |
+          **/*.trx
+          **/TestResults/**/*.dmp
+          **/TestResults/**/*.xml
+        retention-days: 7
+
     - name: Stop Docker Compose services
       if: always()
       run: docker compose down
