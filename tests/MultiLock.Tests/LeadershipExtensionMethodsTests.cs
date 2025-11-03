@@ -45,13 +45,14 @@ public class LeadershipExtensionMethodsTests
         await service.WaitForLeadershipAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { }
+
+        // Assert - Now safe to access events collection without lock since eventTask has completed
         events.ShouldHaveSingleItem();
         events.ShouldAllBe(e => e.BecameLeader);
 
-        // Cleanup
-        await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
         // ReSharper disable once MethodSupportsCancellation
         await service.StopAsync();
         await services.DisposeAsync();
@@ -538,13 +539,14 @@ public class LeadershipExtensionMethodsTests
         await service.WaitForLeadershipAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Any(e => e.BecameLeader), TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { }
+
+        // Assert - Now safe to access events collection without lock since eventTask has completed
         events.ShouldContain(e => e.BecameLeader);
         events.Last().BecameLeader.ShouldBeTrue();
 
-        // Cleanup
-        await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
         // ReSharper disable once MethodSupportsCancellation
         await service.StopAsync();
         await services.DisposeAsync();
@@ -585,13 +587,14 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => !service.IsLeader, TimeSpan.FromSeconds(5), cts.Token);
 
-        // Assert
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { }
+
+        // Assert - Now safe to access events collection without lock since eventTask has completed
         events.ShouldContain(e => e.BecameLeader);
         events.ShouldAllBe(e => e.CurrentStatus.IsLeader || e.LostLeadership);
 
-        // Cleanup
-        await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
         await services.DisposeAsync();
     }
 
@@ -737,14 +740,15 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 2, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { }
+
+        // Assert - Now safe to access events collection without lock since eventTask has completed
         events.Count.ShouldBe(2);
         events.ShouldContain(e => e.BecameLeader);
         events.ShouldContain(e => e.LostLeadership);
 
-        // Cleanup
-        await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
         await services.DisposeAsync();
     }
 }
