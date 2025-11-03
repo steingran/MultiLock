@@ -367,12 +367,19 @@ public class PostgreSqlIntegrationTests : IAsyncLifetime
     {
         try
         {
-            using IHost host = CreateHost("test");
-            await host.StartAsync();
-            ILeaderElectionProvider provider = host.Services.GetRequiredService<ILeaderElectionProvider>();
-            bool isHealthy = await provider.HealthCheckAsync();
-            await host.StopAsync();
-            return isHealthy;
+            var options = new PostgreSqlLeaderElectionOptions
+            {
+                ConnectionString = connectionString,
+                TableName = "health_check",
+                HeartbeatInterval = TimeSpan.FromSeconds(30),
+                LeaderTimeout = TimeSpan.FromSeconds(60)
+            };
+
+            using var provider = new PostgreSqlLeaderElectionProvider(
+                Options.Create(options),
+                NullLogger<PostgreSqlLeaderElectionProvider>.Instance);
+
+            return await provider.HealthCheckAsync();
         }
         catch
         {
