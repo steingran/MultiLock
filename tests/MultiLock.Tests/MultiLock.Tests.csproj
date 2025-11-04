@@ -24,7 +24,6 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Moq" />
-    <PackageReference Include="FluentAssertions" />
   </ItemGroup>
 
   <ItemGroup>
