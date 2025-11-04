@@ -44,6 +44,10 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
 
         try
         {
@@ -92,6 +96,8 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
 
         try
         {
@@ -109,7 +115,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
                 end
                 return 0";
 
-            RedisResult result = await database.ScriptEvaluateAsync(script, new RedisKey[] { key }, new RedisValue[] { participantId });
+            RedisResult result = await database.ScriptEvaluateAsync(script, [key], [participantId]);
 
             if ((int)result == 1)
             {
@@ -138,6 +144,9 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
 
         try
         {
@@ -164,8 +173,8 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
             int ttlSeconds = (int)TimeSpan.FromMinutes(2).TotalSeconds; // Default TTL extension
 
             RedisResult result = await database.ScriptEvaluateAsync(script,
-                new RedisKey[] { key },
-                new RedisValue[] { participantId, now, metadataJson, ttlSeconds });
+                [key],
+                [participantId, now, metadataJson, ttlSeconds]);
 
             bool success = (int)result == 1;
 
@@ -196,6 +205,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
 
         try
         {
@@ -235,6 +245,9 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
         string participantId,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         LeaderInfo? leader = await GetCurrentLeaderAsync(electionGroup, cancellationToken);
         return leader?.LeaderId == participantId;
     }
