@@ -77,7 +77,7 @@ public class InMemoryProviderTests : IDisposable
         // Assert
         leader.ShouldNotBeNull();
         leader.LeaderId.ShouldBe(participantId);
-        leader.Metadata.ShouldContainKey("key");
+        leader.Metadata.ContainsKey("key").ShouldBeTrue();
         leader.Metadata["key"].ShouldBe("value");
     }
 
@@ -147,7 +147,7 @@ public class InMemoryProviderTests : IDisposable
 
         LeaderInfo? leader = await provider.GetCurrentLeaderAsync(electionGroup);
         leader.ShouldNotBeNull();
-        leader.Metadata.ShouldContainKey("key");
+        leader.Metadata.ContainsKey("key").ShouldBeTrue();
         leader.Metadata["key"].ShouldBe("updated-value");
     }
 

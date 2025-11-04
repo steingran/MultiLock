@@ -66,6 +66,9 @@ public class MultiInstanceLeaderElectionTests
                 services.Add(service);
             }
 
+            // Give event subscriptions time to start
+            await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token);
+
             // Act - Start all instances
             Task[] startTasks = services.Select(s => s.StartAsync(cts.Token)).ToArray();
             await Task.WhenAll(startTasks);
@@ -75,6 +78,19 @@ public class MultiInstanceLeaderElectionTests
                 () => services.Count(s => s.IsLeader) == 1,
                 TimeSpan.FromSeconds(5),
                 cts.Token);
+
+            // Wait for leadership events to be received
+            await TestHelpers.WaitForConditionAsync(
+                () =>
+                {
+                    lock (leadershipEvents)
+                    {
+                        return leadershipEvents.Any(e => e.IsLeader);
+                    }
+                },
+                TimeSpan.FromSeconds(3),
+                cts.Token,
+                leadershipEvents);
 
             // Assert - Exactly one leader should be elected
             var currentLeaders = services.Where(s => s.IsLeader).ToList();
