@@ -33,6 +33,10 @@ public sealed class InMemoryLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
 
         lock (@lock)
         {
@@ -73,6 +77,8 @@ public sealed class InMemoryLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
 
         lock (@lock)
         {
@@ -95,6 +101,9 @@ public sealed class InMemoryLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
 
         lock (@lock)
         {
@@ -128,6 +137,7 @@ public sealed class InMemoryLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
 
         lock (@lock)
         {
@@ -151,6 +161,8 @@ public sealed class InMemoryLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
 
         lock (@lock)
         {

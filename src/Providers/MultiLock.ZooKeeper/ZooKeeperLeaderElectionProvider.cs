@@ -59,12 +59,16 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
         await EnsureInitializedAsync(cancellationToken);
 
         try
         {
             string electionPath = GetElectionPath(electionGroup);
-            await EnsurePathExistsAsync(electionPath, cancellationToken);
+            await EnsurePathExistsAsync(electionPath);
 
             string createdPath;
             string? existingPath;
@@ -154,6 +158,8 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -204,6 +210,9 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -272,6 +281,7 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -331,6 +341,8 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -489,7 +501,7 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
 
             if (options.AutoCreateRootPath)
             {
-                await EnsurePathExistsAsync(options.RootPath, cancellationToken);
+                await EnsurePathExistsAsync(options.RootPath);
             }
 
             isInitialized = true;
@@ -501,7 +513,7 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         }
     }
 
-    private async Task EnsurePathExistsAsync(string path, CancellationToken cancellationToken)
+    private async Task EnsurePathExistsAsync(string path)
     {
         if (string.IsNullOrEmpty(path) || path == "/")
         {
@@ -515,10 +527,10 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         }
 
         // Ensure parent path exists first
-        string parentPath = path.Substring(0, path.LastIndexOf('/'));
+        string parentPath = path[..path.LastIndexOf('/')];
         if (!string.IsNullOrEmpty(parentPath) && parentPath != "/")
         {
-            await EnsurePathExistsAsync(parentPath, cancellationToken);
+            await EnsurePathExistsAsync(parentPath);
         }
 
         try

@@ -26,8 +26,8 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         IOptions<FileSystemLeaderElectionOptions> options,
         ILogger<FileSystemLeaderElectionProvider> logger)
     {
-        this.options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        this.options = options.Value;
+        this.logger = logger;
 
         this.options.Validate();
     }
@@ -41,6 +41,10 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
@@ -129,6 +133,8 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
@@ -186,6 +192,9 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
@@ -233,6 +242,7 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
@@ -268,6 +278,8 @@ public sealed class FileSystemLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         string filePath = GetLeaderFilePath(electionGroup);
