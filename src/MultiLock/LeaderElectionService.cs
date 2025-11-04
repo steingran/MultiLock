@@ -9,7 +9,23 @@ namespace MultiLock;
 /// <summary>
 /// Implementation of the leader election service that manages the election process and leadership lifecycle.
 /// </summary>
-public sealed class LeaderElectionService : BackgroundService, ILeaderElectionService
+/// <remarks>
+/// <para>
+/// This service implements both <see cref="IDisposable"/> and <see cref="IAsyncDisposable"/> for proper resource cleanup.
+/// When disposing, the service waits for active timer callbacks to complete before releasing resources,
+/// preventing race conditions and ObjectDisposedException errors.
+/// </para>
+/// <para>
+/// <strong>Disposal Best Practices:</strong>
+/// <list type="bullet">
+/// <item><description>Prefer using <c>await DisposeAsync()</c> when possible for proper async disposal.</description></item>
+/// <item><description>The synchronous <c>Dispose()</c> method delegates to <c>DisposeAsync()</c> and blocks until completion.</description></item>
+/// <item><description>Disposal is idempotent - calling Dispose/DisposeAsync multiple times is safe.</description></item>
+/// <item><description>The service waits up to 10 seconds for active callbacks to complete during disposal.</description></item>
+/// </list>
+/// </para>
+/// </remarks>
+public sealed class LeaderElectionService : BackgroundService, ILeaderElectionService, IAsyncDisposable
 {
     private readonly ILeaderElectionProvider provider;
     private readonly LeaderElectionOptions options;
@@ -24,6 +40,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     private Timer? heartbeatTimer;
     private Timer? electionTimer;
     private volatile bool isDisposed;
+    private volatile int activeCallbacks;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LeaderElectionService"/> class.
@@ -304,41 +321,82 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// </summary>
     public override void Dispose()
     {
-        if (!isDisposed)
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        base.Dispose();
+    }
+
+    /// <summary>
+    /// Asynchronously releases all resources used by the <see cref="LeaderElectionService"/>.
+    /// This method properly waits for any active timer callbacks to complete before disposing resources.
+    /// </summary>
+    /// <returns>A ValueTask representing the asynchronous disposal operation.</returns>
+    public async ValueTask DisposeAsync()
+    {
+        if (isDisposed)
+            return;
+
+        // Set disposal flag first to prevent new operations
+        isDisposed = true;
+
+        // Cancel the token source to signal shutdown
+        await cancellationTokenSource.CancelAsync();
+
+        // Dispose timers to prevent new callbacks from starting
+        // Note: Timer.Dispose() does not wait for callbacks to complete
+        if (heartbeatTimer != null)
         {
-            isDisposed = true;
-
-            cancellationTokenSource.Cancel();
-
-            heartbeatTimer?.Dispose();
-            electionTimer?.Dispose();
-            stateLock.Dispose();
-            cancellationTokenSource.Dispose();
-
-            // Complete the broadcast channel to signal no more events will be written
-            broadcastChannel.Writer.Complete();
-
-            // Complete all subscriber channels
-            lock (subscriberLock)
-            {
-                foreach (Channel<LeadershipChangedEventArgs> channel in subscriberChannels)
-                {
-                    channel.Writer.TryComplete();
-                }
-                subscriberChannels.Clear();
-            }
-
-            try
-            {
-                provider.Dispose();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Error disposing provider");
-            }
+            await heartbeatTimer.DisposeAsync().ConfigureAwait(false);
+            heartbeatTimer = null;
         }
 
-        base.Dispose();
+        if (electionTimer != null)
+        {
+            await electionTimer.DisposeAsync().ConfigureAwait(false);
+            electionTimer = null;
+        }
+
+        // Wait for any active callbacks to complete
+        // Use a timeout to prevent indefinite waiting
+        var waitStart = DateTime.UtcNow;
+        var maxWait = TimeSpan.FromSeconds(10);
+
+        while (activeCallbacks > 0 && DateTime.UtcNow - waitStart < maxWait)
+        {
+            await Task.Delay(10).ConfigureAwait(false);
+        }
+
+        if (activeCallbacks > 0)
+        {
+            logger.LogWarning("Disposing LeaderElectionService with {ActiveCallbacks} active callbacks still running after {MaxWait}s timeout",
+                activeCallbacks, maxWait.TotalSeconds);
+        }
+
+        // Now safe to dispose the lock and other resources
+        stateLock.Dispose();
+        cancellationTokenSource.Dispose();
+
+        // Complete the broadcast channel to signal no more events will be written
+        broadcastChannel.Writer.Complete();
+
+        // Complete all subscriber channels
+        lock (subscriberLock)
+        {
+            foreach (Channel<LeadershipChangedEventArgs> channel in subscriberChannels)
+            {
+                channel.Writer.TryComplete();
+            }
+            subscriberChannels.Clear();
+        }
+
+        try
+        {
+            provider.Dispose();
+        }
+        // Dispose should never throw, but we catch defensively to ensure cleanup completes
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error disposing provider");
+        }
     }
 
     private void ThrowIfDisposed()
@@ -434,6 +492,12 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     private async void HeartbeatTimerCallback(object? state)
     {
+        // Early exit if disposed
+        if (isDisposed)
+            return;
+
+        // Increment active callback counter
+        Interlocked.Increment(ref activeCallbacks);
         try
         {
             await HeartbeatCallbackAsync().ConfigureAwait(false);
@@ -442,10 +506,21 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         {
             logger.LogError(ex, "Unhandled exception in heartbeat timer callback for participant {ParticipantId}", ParticipantId);
         }
+        finally
+        {
+            // Decrement active callback counter
+            Interlocked.Decrement(ref activeCallbacks);
+        }
     }
 
     private async void ElectionTimerCallback(object? state)
     {
+        // Early exit if disposed
+        if (isDisposed)
+            return;
+
+        // Increment active callback counter
+        Interlocked.Increment(ref activeCallbacks);
         try
         {
             await ElectionCallbackAsync().ConfigureAwait(false);
@@ -453,6 +528,11 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception in election timer callback for participant {ParticipantId}", ParticipantId);
+        }
+        finally
+        {
+            // Decrement active callback counter
+            Interlocked.Decrement(ref activeCallbacks);
         }
     }
 
@@ -468,6 +548,10 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             await stateLock.WaitAsync(cancellationTokenSource.Token);
             try
             {
+                // Double-check disposal state after acquiring lock
+                if (isDisposed)
+                    return;
+
                 if (!currentStatus.IsLeader)
                 {
                     return;
@@ -504,6 +588,15 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
                 stateLock.Release();
             }
         }
+        catch (ObjectDisposedException)
+        {
+            // Expected during disposal - stateLock may be disposed
+            // Silently ignore as this is a normal shutdown scenario
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during cancellation - ignore
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Error during heartbeat for participant {ParticipantId}", ParticipantId);
@@ -522,6 +615,10 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             await stateLock.WaitAsync(cancellationTokenSource.Token);
             try
             {
+                // Double-check disposal state after acquiring lock
+                if (isDisposed)
+                    return;
+
                 if (currentStatus.IsLeader)
                 {
                     return;
@@ -533,6 +630,15 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             {
                 stateLock.Release();
             }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Expected during disposal - stateLock may be disposed
+            // Silently ignore as this is a normal shutdown scenario
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during cancellation - ignore
         }
         catch (Exception ex)
         {
