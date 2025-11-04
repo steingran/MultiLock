@@ -57,6 +57,10 @@ public sealed class ConsulLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
 
         try
         {
@@ -123,19 +127,20 @@ public sealed class ConsulLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
 
         try
         {
             string? sessionId;
             lock (sessionLock)
             {
-                if (!activeSessions.TryGetValue(electionGroup, out sessionId))
+                if (!activeSessions.Remove(electionGroup, out sessionId))
                 {
                     logger.LogWarning("No active session found for participant {ParticipantId} in group {ElectionGroup}",
                         participantId, electionGroup);
                     return;
                 }
-                activeSessions.Remove(electionGroup);
             }
 
             // Destroy the session, which will automatically release any locks
@@ -160,6 +165,9 @@ public sealed class ConsulLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
 
         try
         {
@@ -234,6 +242,7 @@ public sealed class ConsulLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
 
         try
         {
@@ -267,6 +276,9 @@ public sealed class ConsulLeaderElectionProvider : ILeaderElectionProvider
         string participantId,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         LeaderInfo? leader = await GetCurrentLeaderAsync(electionGroup, cancellationToken);
         return leader?.LeaderId == participantId;
     }

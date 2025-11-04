@@ -42,6 +42,10 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -102,6 +106,8 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -148,6 +154,9 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -193,6 +202,7 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -205,10 +215,8 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
                 FROM {options.SchemaName}.{options.TableName}
                 WHERE election_group = @ElectionGroup";
 
-            using var command = new NpgsqlCommand(sql, connection)
-            {
-                CommandTimeout = options.CommandTimeoutSeconds
-            };
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.CommandTimeout = options.CommandTimeoutSeconds;
 
             command.Parameters.AddWithValue("@ElectionGroup", electionGroup);
 
@@ -241,6 +249,8 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -253,10 +263,8 @@ public sealed class PostgreSqlLeaderElectionProvider : ILeaderElectionProvider
                 FROM {options.SchemaName}.{options.TableName}
                 WHERE election_group = @ElectionGroup AND leader_id = @ParticipantId";
 
-            await using var command = new NpgsqlCommand(sql, connection)
-            {
-                CommandTimeout = options.CommandTimeoutSeconds
-            };
+            await using var command = new NpgsqlCommand(sql, connection);
+            command.CommandTimeout = options.CommandTimeoutSeconds;
 
             command.Parameters.AddWithValue("@ElectionGroup", electionGroup);
             command.Parameters.AddWithValue("@ParticipantId", participantId);

@@ -42,6 +42,10 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -70,10 +74,8 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
 
                 SELECT CASE WHEN @@ROWCOUNT > 0 THEN 1 ELSE 0 END;";
 
-            using var command = new SqlCommand(sql, connection)
-            {
-                CommandTimeout = options.CommandTimeoutSeconds
-            };
+            await using var command = new SqlCommand(sql, connection);
+            command.CommandTimeout = options.CommandTimeoutSeconds;
 
             command.Parameters.AddWithValue("@ElectionGroup", electionGroup);
             command.Parameters.AddWithValue("@ParticipantId", participantId);
@@ -107,6 +109,8 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -145,6 +149,9 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -185,6 +192,7 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
         await EnsureInitializedAsync(cancellationToken);
 
         try
@@ -232,6 +240,8 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         await EnsureInitializedAsync(cancellationToken);
 
         try

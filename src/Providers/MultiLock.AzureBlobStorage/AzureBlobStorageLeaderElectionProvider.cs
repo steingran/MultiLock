@@ -51,6 +51,10 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
+        ParameterValidation.ValidateLockTimeout(lockTimeout);
 
         try
         {
@@ -113,6 +117,8 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
 
         try
         {
@@ -120,13 +126,12 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
             string? leaseId;
             lock (leaseLock)
             {
-                if (!activeLeases.TryGetValue(electionGroup, out leaseId))
+                if (!activeLeases.Remove(electionGroup, out leaseId))
                 {
                     logger.LogWarning("No active lease found for participant {ParticipantId} in group {ElectionGroup}",
                         participantId, electionGroup);
                     return;
                 }
-                activeLeases.Remove(electionGroup);
             }
 
             BlobClient blobClient = await GetBlobClientAsync(electionGroup, cancellationToken);
@@ -159,6 +164,9 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
+        ParameterValidation.ValidateMetadata(metadata);
 
         try
         {
@@ -225,6 +233,7 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
 
         try
         {
@@ -263,6 +272,9 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
         string participantId,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        ParameterValidation.ValidateElectionGroup(electionGroup);
+        ParameterValidation.ValidateParticipantId(participantId);
         LeaderInfo? leader = await GetCurrentLeaderAsync(electionGroup, cancellationToken);
         return leader?.LeaderId == participantId;
     }
@@ -315,7 +327,7 @@ public sealed class AzureBlobStorageLeaderElectionProvider : ILeaderElectionProv
             if (options.AutoCreateContainer)
             {
                 BlobContainerClient? containerClient = blobServiceClient.GetBlobContainerClient(options.ContainerName);
-                await containerClient.CreateIfNotExistsAsync(PublicAccessType.None, cancellationToken: cancellationToken);
+                await containerClient.CreateIfNotExistsAsync(cancellationToken: cancellationToken);
                 logger.LogInformation("Container {ContainerName} created or verified", options.ContainerName);
             }
 

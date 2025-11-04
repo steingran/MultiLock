@@ -14,10 +14,13 @@ public static class LeaderElectionServiceExtensions
     /// <param name="services">The service collection.</param>
     /// <param name="configureOptions">An action to configure the leader election options.</param>
     /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
     public static IServiceCollection AddLeaderElection(
         this IServiceCollection services,
         Action<LeaderElectionOptions>? configureOptions = null)
     {
+        ArgumentNullException.ThrowIfNull(services);
+
         if (configureOptions != null)
         {
             services.Configure(configureOptions);
@@ -37,11 +40,14 @@ public static class LeaderElectionServiceExtensions
     /// <param name="services">The service collection.</param>
     /// <param name="configureOptions">An action to configure the leader election options.</param>
     /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
     public static IServiceCollection AddLeaderElection<TProvider>(
         this IServiceCollection services,
         Action<LeaderElectionOptions>? configureOptions = null)
         where TProvider : class, ILeaderElectionProvider
     {
+        ArgumentNullException.ThrowIfNull(services);
+
         services.TryAddSingleton<ILeaderElectionProvider, TProvider>();
         return services.AddLeaderElection(configureOptions);
     }
@@ -53,11 +59,15 @@ public static class LeaderElectionServiceExtensions
     /// <param name="providerFactory">A factory function to create the provider.</param>
     /// <param name="configureOptions">An action to configure the leader election options.</param>
     /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> or <paramref name="providerFactory"/> is null.</exception>
     public static IServiceCollection AddLeaderElection(
         this IServiceCollection services,
         Func<IServiceProvider, ILeaderElectionProvider> providerFactory,
         Action<LeaderElectionOptions>? configureOptions = null)
     {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(providerFactory);
+
         services.TryAddSingleton(providerFactory);
         return services.AddLeaderElection(configureOptions);
     }
