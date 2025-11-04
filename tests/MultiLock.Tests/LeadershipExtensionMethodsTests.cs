@@ -210,15 +210,14 @@ public class LeadershipExtensionMethodsTests
         ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
             await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken)
-                .DistinctUntilChanged(cancellationToken)
-                .Take(2, cancellationToken))
+                .DistinctUntilChanged(cancellationToken))
             {
                 lock (eventsLock)
                 {
@@ -228,12 +227,18 @@ public class LeadershipExtensionMethodsTests
         }, cancellationToken);
 
         // Give the async enumerable consumer time to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
 
-        await service.StartAsync(cts.Token);
-        await service.WaitForLeadershipAsync(cts.Token);
-        await service.StopAsync(cts.Token);
-        await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
+        await service.StartAsync(cancellationToken);
+        await service.WaitForLeadershipAsync(cancellationToken);
+
+        // Wait for the first event (gained leadership)
+        await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(3), cancellationToken, eventsLock);
+
+        await service.StopAsync(cancellationToken);
+
+        // Wait for the second event (lost leadership)
+        await TestHelpers.WaitForConditionAsync(() => events.Count >= 2, TimeSpan.FromSeconds(3), cancellationToken, eventsLock);
 
         // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
@@ -245,7 +250,9 @@ public class LeadershipExtensionMethodsTests
         {
             eventSnapshot = events.ToArray();
         }
-        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(2);
+        eventSnapshot[0].BecameLeader.ShouldBeTrue();
+        eventSnapshot[1].LostLeadership.ShouldBeTrue();
 
         await services.DisposeAsync();
     }
