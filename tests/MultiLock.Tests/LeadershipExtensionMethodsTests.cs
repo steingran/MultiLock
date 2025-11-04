@@ -49,9 +49,14 @@ public class LeadershipExtensionMethodsTests
         await cts.CancelAsync();
         try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
 
-        // Assert - Now safe to access events collection without lock since eventTask has completed
-        events.ShouldHaveSingleItem();
-        events.ShouldAllBe(e => e.BecameLeader);
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.ShouldHaveSingleItem();
+        eventSnapshot.ShouldAllBe(e => e.BecameLeader);
 
         // ReSharper disable once MethodSupportsCancellation
         await service.StopAsync();
@@ -134,12 +139,18 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 2, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
-        events.Count.ShouldBe(2);
-
-        // Cleanup
+        // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBe(2);
+
         await services.DisposeAsync();
     }
 
@@ -175,13 +186,19 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
-        events.ShouldHaveSingleItem();
-        events.First().LostLeadership.ShouldBeTrue();
-
-        // Cleanup
+        // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.ShouldHaveSingleItem();
+        eventSnapshot.First().LostLeadership.ShouldBeTrue();
+
         await services.DisposeAsync();
     }
 
@@ -218,12 +235,18 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
-        events.Count.ShouldBeGreaterThanOrEqualTo(1);
-
-        // Cleanup
+        // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+
         await services.DisposeAsync();
     }
 
@@ -455,12 +478,18 @@ public class LeadershipExtensionMethodsTests
         await Task.Delay(TimeSpan.FromMilliseconds(250), cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
-        events.Count.ShouldBeGreaterThanOrEqualTo(1);
-
-        // Cleanup
+        // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+
         await services.DisposeAsync();
     }
 
@@ -500,12 +529,18 @@ public class LeadershipExtensionMethodsTests
         await Task.Delay(TimeSpan.FromMilliseconds(150), cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
-        // Assert
-        events.Count.ShouldBeGreaterThanOrEqualTo(1);
-
-        // Cleanup
+        // Cleanup - Cancel and wait for event task to complete before asserting
         await cts.CancelAsync();
-        try { await eventTask; } catch (OperationCanceledException) { }
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Take snapshot of events while holding lock to ensure thread-safety
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+
         await services.DisposeAsync();
     }
 
