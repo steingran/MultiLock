@@ -1,19 +1,27 @@
 using System.Collections.ObjectModel;
-using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using MultiLock.InMemory;
+using Shouldly;
 using Xunit;
 
 namespace MultiLock.Tests;
 
-public class InMemoryProviderTests
+public class InMemoryProviderTests : IDisposable
 {
     private readonly InMemoryLeaderElectionProvider provider;
+    private readonly ILoggerFactory loggerFactory;
 
     public InMemoryProviderTests()
     {
-        ILogger<InMemoryLeaderElectionProvider> logger = new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>();
+        loggerFactory = new LoggerFactory();
+        ILogger<InMemoryLeaderElectionProvider> logger = loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>();
         provider = new InMemoryLeaderElectionProvider(logger);
+    }
+
+    public void Dispose()
+    {
+        provider.Dispose();
+        loggerFactory.Dispose();
     }
 
     [Fact]
@@ -29,7 +37,7 @@ public class InMemoryProviderTests
         bool result = await provider.TryAcquireLeadershipAsync(electionGroup, participantId, metadata, lockTimeout);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 
     [Fact]
@@ -49,7 +57,7 @@ public class InMemoryProviderTests
         bool result = await provider.TryAcquireLeadershipAsync(electionGroup, participant2, metadata, lockTimeout);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -67,9 +75,10 @@ public class InMemoryProviderTests
         LeaderInfo? leader = await provider.GetCurrentLeaderAsync(electionGroup);
 
         // Assert
-        leader.Should().NotBeNull();
-        leader!.LeaderId.Should().Be(participantId);
-        leader.Metadata.Should().ContainKey("key").WhoseValue.Should().Be("value");
+        leader.ShouldNotBeNull();
+        leader.LeaderId.ShouldBe(participantId);
+        leader.Metadata.ShouldContainKey("key");
+        leader.Metadata["key"].ShouldBe("value");
     }
 
     [Fact]
@@ -82,7 +91,7 @@ public class InMemoryProviderTests
         LeaderInfo? leader = await provider.GetCurrentLeaderAsync(electionGroup);
 
         // Assert
-        leader.Should().BeNull();
+        leader.ShouldBeNull();
     }
 
     [Fact]
@@ -100,7 +109,7 @@ public class InMemoryProviderTests
         bool isLeader = await provider.IsLeaderAsync(electionGroup, participantId);
 
         // Assert
-        isLeader.Should().BeTrue();
+        isLeader.ShouldBeTrue();
     }
 
     [Fact]
@@ -114,7 +123,7 @@ public class InMemoryProviderTests
         bool isLeader = await provider.IsLeaderAsync(electionGroup, participantId);
 
         // Assert
-        isLeader.Should().BeFalse();
+        isLeader.ShouldBeFalse();
     }
 
     [Fact]
@@ -134,10 +143,12 @@ public class InMemoryProviderTests
         bool result = await provider.UpdateHeartbeatAsync(electionGroup, participantId, updatedMetadata);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
 
         LeaderInfo? leader = await provider.GetCurrentLeaderAsync(electionGroup);
-        leader!.Metadata.Should().ContainKey("key").WhoseValue.Should().Be("updated-value");
+        leader.ShouldNotBeNull();
+        leader.Metadata.ShouldContainKey("key");
+        leader.Metadata["key"].ShouldBe("updated-value");
     }
 
     [Fact]
@@ -152,7 +163,7 @@ public class InMemoryProviderTests
         bool result = await provider.UpdateHeartbeatAsync(electionGroup, participantId, metadata);
 
         // Assert
-        result.Should().BeFalse();
+        result.ShouldBeFalse();
     }
 
     [Fact]
@@ -171,7 +182,7 @@ public class InMemoryProviderTests
 
         // Assert
         LeaderInfo? leader = await provider.GetCurrentLeaderAsync(electionGroup);
-        leader.Should().BeNull();
+        leader.ShouldBeNull();
     }
 
     [Fact]
@@ -181,7 +192,7 @@ public class InMemoryProviderTests
         bool isHealthy = await provider.HealthCheckAsync();
 
         // Assert
-        isHealthy.Should().BeTrue();
+        isHealthy.ShouldBeTrue();
     }
 
     [Fact]
@@ -204,6 +215,6 @@ public class InMemoryProviderTests
         bool result = await provider.TryAcquireLeadershipAsync(electionGroup, participant2, metadata, shortTimeout);
 
         // Assert
-        result.Should().BeTrue();
+        result.ShouldBeTrue();
     }
 }
