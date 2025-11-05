@@ -154,11 +154,11 @@ public class MultiInstanceLeaderElectionTests
         var leadershipChanges = new List<string>();
         var eventTasks = new List<Task>();
         var cts = new CancellationTokenSource();
+        string tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
 
         try
         {
             // Create multiple instances with file system provider
-            string tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(tempDir);
 
             for (int i = 0; i < 3; i++)
@@ -259,9 +259,6 @@ public class MultiInstanceLeaderElectionTests
                 leadershipChanges.ShouldContain(c => c.StartsWith(initialLeader.ParticipantId) && c.EndsWith("-lost"),
                     "the original leader should have lost leadership");
             }
-
-            // Cleanup temp directory
-            Directory.Delete(tempDir, true);
         }
         finally
         {
@@ -292,6 +289,20 @@ public class MultiInstanceLeaderElectionTests
             }
 
             cts.Dispose();
+
+            // Cleanup temp directory after all services are disposed
+            if (Directory.Exists(tempDir))
+            {
+                try
+                {
+                    Directory.Delete(tempDir, true);
+                }
+                catch (IOException ex)
+                {
+                    // Log but don't fail the test if cleanup fails
+                    Console.WriteLine($"Warning: Failed to delete temp directory {tempDir}: {ex.Message}");
+                }
+            }
         }
     }
 
