@@ -18,37 +18,39 @@ public class ConcurrentScenarioTests
         // Arrange
         const int participantCount = 10;
         var services = new List<ILeaderElectionService>();
+        var serviceProviders = new List<ServiceProvider>();
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
+
+        for (int i = 0; i < participantCount; i++)
+        {
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+            serviceCollection.AddSingleton<ILeaderElectionProvider>(provider);
+
+            int index = i;
+            serviceCollection.Configure<LeaderElectionOptions>(options =>
+            {
+                options.ParticipantId = $"participant-{index}";
+                options.ElectionGroup = "high-concurrency-test";
+                options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+                options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+                options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+                options.AutoStart = false;
+            });
+            serviceCollection.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+
+            ServiceProvider serviceProvider = serviceCollection.BuildServiceProvider();
+            serviceProviders.Add(serviceProvider);
+            ILeaderElectionService service = serviceProvider.GetRequiredService<ILeaderElectionService>();
+            services.Add(service);
+        }
 
         try
         {
-            for (int i = 0; i < participantCount; i++)
-            {
-                var serviceCollection = new ServiceCollection();
-                serviceCollection.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
-                serviceCollection.AddSingleton<ILeaderElectionProvider>(provider);
-
-                int index = i;
-                serviceCollection.Configure<LeaderElectionOptions>(options =>
-                {
-                    options.ParticipantId = $"participant-{index}";
-                    options.ElectionGroup = "high-concurrency-test";
-                    options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
-                    options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
-                    options.ElectionInterval = TimeSpan.FromMilliseconds(50);
-                    options.AutoStart = false;
-                });
-                serviceCollection.AddSingleton<ILeaderElectionService, LeaderElectionService>();
-
-                ServiceProvider serviceProvider = serviceCollection.BuildServiceProvider();
-                ILeaderElectionService service = serviceProvider.GetRequiredService<ILeaderElectionService>();
-                services.Add(service);
-            }
-
             // Act - Start all participants simultaneously
-            Task[] startTasks = services.Select(s => s.StartAsync()).ToArray();
-            await Task.WhenAll(startTasks);
+            await Task.WhenAll(services.Select(s => s.StartAsync()));
 
             // Wait for election to stabilize
             await TestHelpers.WaitForConditionAsync(
@@ -64,22 +66,22 @@ public class ConcurrentScenarioTests
             LeaderInfo? leaderInfo = await services[0].GetCurrentLeaderAsync();
             leaderInfo.ShouldNotBeNull();
 
-            foreach (ILeaderElectionService service in services)
+            await Task.WhenAll(services.Select(async service =>
             {
                 LeaderInfo? info = await service.GetCurrentLeaderAsync();
                 info.ShouldNotBeNull();
                 info.LeaderId.ShouldBe(leaderInfo.LeaderId, "all participants should agree on the same leader");
-            }
+            }));
         }
         finally
         {
-            Task[] stopTasks = services.Select(s => s.StopAsync()).ToArray();
-            await Task.WhenAll(stopTasks);
+            await Task.WhenAll(services.Select(s => s.StopAsync()));
 
             foreach (ILeaderElectionService service in services)
-            {
                 service.Dispose();
-            }
+
+            foreach (ServiceProvider serviceProvider in serviceProviders)
+                await serviceProvider.DisposeAsync();
         }
     }
 
@@ -88,8 +90,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int participantCount = 20;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "test", "concurrent" } };
         bool[] acquireResults = new bool[participantCount];
@@ -122,8 +125,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int iterations = 50;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "test", "acquire-release" } };
         int successfulAcquisitions = 0;
@@ -184,8 +188,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int checkCount = 100;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "test", "is-leader" } };
 
@@ -217,8 +222,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int queryCount = 100;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "test", "get-leader" } };
 
@@ -247,8 +253,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int iterations = 100;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "iteration", "0" } };
 
@@ -287,8 +294,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int updateCount = 50;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "heartbeat", "initial" } };
 
@@ -323,8 +331,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int updateCount = 100;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         var metadata = new Dictionary<string, string> { { "counter", "0" } };
 
@@ -365,8 +374,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int waitingParticipantCount = 5;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         // Leader acquires leadership
         bool acquired = await provider.TryAcquireLeadershipAsync(
@@ -405,8 +415,9 @@ public class ConcurrentScenarioTests
     public async Task LeaderFailover_SimultaneousFailureAndAcquire_ShouldNotCauseSplitBrain()
     {
         // Arrange
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         // Leader acquires leadership
         bool acquired = await provider.TryAcquireLeadershipAsync(
@@ -435,7 +446,7 @@ public class ConcurrentScenarioTests
             return new { ParticipantId = participantId, Acquired = participantAcquired };
         }).ToArray();
 
-        await Task.WhenAll(acquireTasks.Concat([releaseTask]));
+        await Task.WhenAll(acquireTasks.Concat(new[] { releaseTask }));
         var results = await Task.WhenAll(acquireTasks);
 
         // Assert - At most one participant should be leader (no split-brain)
@@ -460,8 +471,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int iterationCount = 20;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         // Act - Simulate rapid leader changes
         for (int i = 0; i < iterationCount; i++)
@@ -498,8 +510,9 @@ public class ConcurrentScenarioTests
     {
         // Arrange
         const int cycleCount = 10;
+        using var loggerFactory = new LoggerFactory();
         var provider = new InMemoryLeaderElectionProvider(
-            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
 
         // Act - Multiple cycles of leader acquisition and release
         Task<bool>[] tasks = Enumerable.Range(0, cycleCount).Select(async cycle =>
