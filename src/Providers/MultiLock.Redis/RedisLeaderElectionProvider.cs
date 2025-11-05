@@ -276,15 +276,11 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
     /// <inheritdoc />
     public void Dispose()
     {
-        if (!isDisposed)
-        {
-            isDisposed = true;
+        if (isDisposed) return;
+        isDisposed = true;
 
-            if (connectionMultiplexer.IsValueCreated)
-            {
-                connectionMultiplexer.Value.Dispose();
-            }
-        }
+        if (connectionMultiplexer.IsValueCreated)
+            connectionMultiplexer.Value.Dispose();
     }
 
     private void ThrowIfDisposed()

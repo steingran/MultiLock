@@ -181,6 +181,31 @@ public class ZooKeeperProviderTests
     }
 
     [Fact]
+    public async Task DisposeAsync_ShouldNotThrow()
+    {
+        // Arrange
+        var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act & Assert
+        await provider.DisposeAsync(); // Should not throw
+    }
+
+    [Fact]
+    public async Task DisposeAsync_MultipleTimes_ShouldNotThrow()
+    {
+        // Arrange
+        var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act & Assert
+        await provider.DisposeAsync(); // First dispose
+        await provider.DisposeAsync(); // Second dispose should not throw
+    }
+
+    [Fact]
     public async Task MethodsAfterDispose_ShouldThrow()
     {
         // Arrange
