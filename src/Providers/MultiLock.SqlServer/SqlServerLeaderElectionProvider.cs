@@ -298,11 +298,9 @@ public sealed class SqlServerLeaderElectionProvider : ILeaderElectionProvider
     /// <inheritdoc />
     public void Dispose()
     {
-        if (!isDisposed)
-        {
-            isDisposed = true;
-            initializationLock.Dispose();
-        }
+        if (isDisposed) return;
+        isDisposed = true;
+        initializationLock.Dispose();
     }
 
     private void ThrowIfDisposed()

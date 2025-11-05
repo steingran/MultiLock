@@ -217,4 +217,55 @@ public class InMemoryProviderTests : IDisposable
         // Assert
         result.ShouldBeTrue();
     }
+
+    [Fact]
+    public void Dispose_ShouldNotThrow()
+    {
+        // Arrange
+        var testProvider = new InMemoryLeaderElectionProvider(
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
+
+        // Act & Assert
+        testProvider.Dispose(); // Should not throw
+    }
+
+    [Fact]
+    public void Dispose_MultipleTimes_ShouldNotThrow()
+    {
+        // Arrange
+        var testProvider = new InMemoryLeaderElectionProvider(
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
+
+        // Act & Assert
+        testProvider.Dispose(); // First dispose
+        testProvider.Dispose(); // Second dispose should not throw
+    }
+
+    [Fact]
+    public async Task MethodsAfterDispose_ShouldThrow()
+    {
+        // Arrange
+        var testProvider = new InMemoryLeaderElectionProvider(
+            loggerFactory.CreateLogger<InMemoryLeaderElectionProvider>());
+
+        testProvider.Dispose();
+
+        var metadata = new Dictionary<string, string>();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => testProvider.TryAcquireLeadershipAsync("test", "participant", metadata, TimeSpan.FromMinutes(1)));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => testProvider.GetCurrentLeaderAsync("test"));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => testProvider.UpdateHeartbeatAsync("test", "participant", metadata));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => testProvider.ReleaseLeadershipAsync("test", "participant"));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => testProvider.IsLeaderAsync("test", "participant"));
+    }
 }

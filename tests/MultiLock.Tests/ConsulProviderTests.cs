@@ -129,4 +129,58 @@ public class ConsulProviderTests
         provider.Dispose(); // First dispose
         provider.Dispose(); // Second dispose should not throw
     }
+
+    [Fact]
+    public async Task DisposeAsync_ShouldNotThrow()
+    {
+        // Arrange
+        var provider = new ConsulLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act & Assert
+        await provider.DisposeAsync(); // Should not throw
+    }
+
+    [Fact]
+    public async Task DisposeAsync_MultipleTimes_ShouldNotThrow()
+    {
+        // Arrange
+        var provider = new ConsulLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act & Assert
+        await provider.DisposeAsync(); // First dispose
+        await provider.DisposeAsync(); // Second dispose should not throw
+    }
+
+    [Fact]
+    public async Task MethodsAfterDispose_ShouldThrow()
+    {
+        // Arrange
+        var provider = new ConsulLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        provider.Dispose();
+
+        var metadata = new Dictionary<string, string>();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.TryAcquireLeadershipAsync("test", "participant", metadata, TimeSpan.FromMinutes(1)));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.GetCurrentLeaderAsync("test"));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.UpdateHeartbeatAsync("test", "participant", metadata));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.ReleaseLeadershipAsync("test", "participant"));
+
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => provider.IsLeaderAsync("test", "participant"));
+    }
 }
