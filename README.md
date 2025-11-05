@@ -1,4 +1,4 @@
-# LeaderElection.Net
+# MultiLock
 
 A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, Redis, File System, In-Memory, Consul, and ZooKeeper.
 
@@ -74,41 +74,38 @@ graph TB
 
 | Provider | Package | Description |
 |----------|---------|-------------|
-| Azure Blob Storage | `LeaderElection.Net.AzureBlobStorage` | Uses Azure Blob Storage for coordination |
-| SQL Server | `LeaderElection.Net.SqlServer` | Uses SQL Server database for coordination |
-| PostgreSQL | `LeaderElection.Net.PostgreSQL` | Uses PostgreSQL database for coordination |
-| Redis | `LeaderElection.Net.Redis` | Uses Redis for coordination |
-| File System | `LeaderElection.Net.FileSystem` | Uses local file system (single machine) |
-| In-Memory | `LeaderElection.Net.InMemory` | In-memory provider for testing |
-| Consul | `LeaderElection.Net.Consul` | Uses HashiCorp Consul for coordination |
-| ZooKeeper | `LeaderElection.Net.ZooKeeper` | Uses Apache ZooKeeper for coordination |
+| Azure Blob Storage | `MultiLock.AzureBlobStorage` | Uses Azure Blob Storage for coordination |
+| SQL Server | `MultiLock.SqlServer` | Uses SQL Server database for coordination |
+| PostgreSQL | `MultiLock.PostgreSQL` | Uses PostgreSQL database for coordination |
+| Redis | `MultiLock.Redis` | Uses Redis for coordination |
+| File System | `MultiLock.FileSystem` | Uses local file system (single machine) |
+| In-Memory | `MultiLock.InMemory` | In-memory provider for testing |
+| Consul | `MultiLock.Consul` | Uses HashiCorp Consul for coordination |
+| ZooKeeper | `MultiLock.ZooKeeper` | Uses Apache ZooKeeper for coordination |
 
 ## Quick Start
 
-### 1. Install the Core Package
-
-```bash
-dotnet add package LeaderElection.Net
-```
-
-### 2. Install a Provider Package
+### 1. Install a Provider Package
 
 ```bash
 # For SQL Server
-dotnet add package LeaderElection.Net.SqlServer
+dotnet add package MultiLock.SqlServer
 
 # For Redis
-dotnet add package LeaderElection.Net.Redis
+dotnet add package MultiLock.Redis
+
+# For PostgreSQL
+dotnet add package MultiLock.PostgreSQL
 
 # For In-Memory (testing)
-dotnet add package LeaderElection.Net.InMemory
+dotnet add package MultiLock.InMemory
 ```
 
-### 3. Configure Services
+### 2. Configure Services
 
 ```csharp
-using LeaderElection.Net;
-using LeaderElection.Net.InMemory;
+using MultiLock;
+using MultiLock.InMemory;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -123,7 +120,7 @@ builder.Services.AddLeaderElection<InMemoryLeaderElectionProvider>(options =>
 var app = builder.Build();
 ```
 
-### 4. Use in Your Service
+### 3. Use in Your Service
 
 ```csharp
 public class MyBackgroundService : BackgroundService
@@ -266,6 +263,174 @@ await foreach (var change in leaderElection.GetLeadershipChangesAsync(cancellati
     // Process filtered events
 }
 ```
+
+## Concurrency and Thread-Safety
+
+### Thread-Safety Guarantees
+
+The MultiLock framework is designed to be fully thread-safe and handle concurrent operations gracefully:
+
+#### Core Service Thread-Safety
+
+- **All public methods are thread-safe**: You can safely call `StartAsync()`, `StopAsync()`, `IsLeaderAsync()`, and other methods from multiple threads concurrently.
+- **Internal state protection**: All internal state modifications are protected by appropriate synchronization mechanisms (locks, atomic operations, etc.).
+- **Safe disposal**: The service implements both `IDisposable` and `IAsyncDisposable` with proper coordination to prevent race conditions during shutdown.
+- **Callback coordination**: Timer callbacks (heartbeat and election timers) are coordinated with disposal to prevent `ObjectDisposedException` and ensure clean shutdown.
+
+#### Provider Thread-Safety
+
+All provider implementations are thread-safe and support concurrent operations:
+
+- **Concurrent leadership acquisition**: Multiple participants can safely attempt to acquire leadership simultaneously - only one will succeed.
+- **Concurrent heartbeat updates**: Multiple threads can safely update heartbeats for the same participant.
+- **Concurrent metadata updates**: Metadata can be safely updated from multiple threads.
+- **Concurrent queries**: Methods like `GetCurrentLeaderAsync()` and `IsLeaderAsync()` can be called concurrently without issues.
+
+### Concurrency Scenarios
+
+The framework has been extensively tested for various concurrent scenarios:
+
+#### Multiple Participants Competing
+
+When multiple participants attempt to acquire leadership simultaneously:
+
+```csharp
+// Safe to run from multiple instances/threads
+var tasks = Enumerable.Range(0, 10).Select(async i =>
+{
+    var service = serviceProvider.GetRequiredService<ILeaderElectionService>();
+    await service.StartAsync();
+    // Only one will become leader
+}).ToArray();
+
+await Task.WhenAll(tasks);
+```
+
+Exactly one participant will become the leader. All others will fail gracefully and continue monitoring for leadership opportunities.
+
+#### Rapid Acquire/Release Cycles
+
+The framework handles rapid leadership transitions without race conditions:
+
+```csharp
+// Safe to rapidly acquire and release leadership
+for (int i = 0; i < 100; i++)
+{
+    await service.StartAsync();
+    await Task.Delay(10);
+    await service.StopAsync();
+}
+```
+
+Each cycle completes cleanly without resource leaks or state corruption.
+
+#### Concurrent Heartbeat Updates
+
+Multiple threads can safely update heartbeats:
+
+```csharp
+// Safe concurrent heartbeat updates
+var tasks = Enumerable.Range(0, 50).Select(async i =>
+{
+    await provider.UpdateHeartbeatAsync("election-group", "participant-id");
+}).ToArray();
+
+await Task.WhenAll(tasks);
+```
+
+All heartbeat updates are processed atomically. The last update wins.
+
+#### Leader Failover Race Conditions
+
+When a leader fails and multiple participants compete to take over:
+
+```csharp
+// Current leader releases leadership
+await currentLeader.StopAsync();
+
+// Multiple waiting participants compete
+// Only one will successfully acquire leadership
+```
+
+Clean failover without split-brain scenarios. Exactly one new leader is elected.
+
+### Best Practices for Concurrent Usage
+
+1. **Use dependency injection**: Register the service as a singleton to ensure a single instance per application.
+
+```csharp
+services.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+```
+
+2. **Avoid manual synchronization**: The framework handles all necessary synchronization internally. Don't wrap calls in your own locks.
+
+3. **Use async disposal**: When shutting down, prefer `DisposeAsync()` over `Dispose()` for providers that support it (Consul, ZooKeeper).
+
+```csharp
+await using var provider = new ConsulLeaderElectionProvider(options, logger);
+// Provider will be properly disposed asynchronously
+```
+
+4. **Handle cancellation properly**: Always pass `CancellationToken` to async methods and handle `OperationCanceledException`.
+
+```csharp
+try
+{
+    await service.StartAsync(cancellationToken);
+}
+catch (OperationCanceledException)
+{
+    // Clean shutdown requested
+}
+```
+
+5. **Monitor leadership changes**: Use the `GetLeadershipChangesAsync()` API to react to leadership transitions rather than polling.
+
+```csharp
+await foreach (var change in service.GetLeadershipChangesAsync(cancellationToken))
+{
+    if (change.BecameLeader)
+    {
+        // Start leader-only work
+    }
+    else if (change.LostLeadership)
+    {
+        // Stop leader-only work
+    }
+}
+```
+
+### Provider-Specific Concurrency Considerations
+
+#### Database Providers (PostgreSQL, SQL Server)
+
+- Use atomic database operations (INSERT ... ON CONFLICT, MERGE) to prevent race conditions
+- Connection pooling is handled automatically by the database client libraries
+- No risk of deadlocks - all operations use optimistic concurrency control
+
+#### Redis Provider
+
+- Uses atomic Redis commands (SET with NX and EX options)
+- Connection multiplexing is handled by StackExchange.Redis
+- No connection pool exhaustion under high concurrency
+
+#### File System Provider
+
+- Uses file locking for mutual exclusion
+- **Note**: Only suitable for single-machine scenarios
+- File locks are automatically released on process termination
+
+#### Consul Provider
+
+- Uses Consul sessions for distributed locking
+- Session TTL ensures automatic cleanup on failure
+- Supports high concurrency across distributed systems
+
+#### ZooKeeper Provider
+
+- Uses ZooKeeper ephemeral sequential nodes
+- Automatic cleanup when client disconnects
+- Handles network partitions gracefully
 
 ## Provider-Specific Configuration
 
@@ -426,20 +591,20 @@ The framework includes comprehensive test coverage:
 dotnet test
 
 # Run specific test project
-dotnet test tests/LeaderElection.Net.Tests/
-dotnet test tests/LeaderElection.Net.IntegrationTests/
+dotnet test tests/MultiLock.Tests/
+dotnet test tests/MultiLock.IntegrationTests/
 ```
 
 ## Samples
 
 Check out the sample applications:
 
-- **Basic Sample**: `samples/LeaderElection.Sample/` - Single provider demonstration
-- **Multi-Provider Demo**: `samples/LeaderElection.MultiProvider/` - Multiple instances competing
+- **Basic Sample**: `samples/MultiLock.Sample/` - Single provider demonstration
+- **Multi-Provider Demo**: `samples/MultiLock.MultiProvider/` - Multiple instances competing
 
 ```bash
 # Run the basic sample with different providers
-cd samples/LeaderElection.Sample
+cd samples/MultiLock.Sample
 dotnet run inmemory
 dotnet run filesystem
 dotnet run sqlserver "Server=localhost;Database=Test;Trusted_Connection=true;"
@@ -449,7 +614,7 @@ dotnet run consul "http://localhost:8500"
 dotnet run zookeeper "localhost:2181"
 
 # Run the multi-provider demo
-cd samples/LeaderElection.MultiProvider
+cd samples/MultiLock.MultiProvider
 dotnet run
 ```
 
@@ -459,11 +624,11 @@ The project includes comprehensive unit tests and integration tests. Integration
 
 ```bash
 # Run unit tests
-dotnet test tests/LeaderElection.Net.Tests/
+dotnet test tests/MultiLock.Tests/
 
 # Run integration tests (requires Docker)
 docker-compose up -d
-dotnet test tests/LeaderElection.Net.IntegrationTests/
+dotnet test tests/MultiLock.IntegrationTests/
 docker-compose down
 ```
 
