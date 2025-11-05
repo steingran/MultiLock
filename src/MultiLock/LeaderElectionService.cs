@@ -319,9 +319,12 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// <summary>
     /// Releases all resources used by the <see cref="LeaderElectionService"/>.
     /// </summary>
+    /// <remarks>
+    /// The disposal is executed on a thread pool thread to avoid potential deadlocks in synchronization contexts.
+    /// </remarks>
     public override void Dispose()
     {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        Task.Run(() => DisposeAsync().AsTask()).GetAwaiter().GetResult();
         base.Dispose();
     }
 

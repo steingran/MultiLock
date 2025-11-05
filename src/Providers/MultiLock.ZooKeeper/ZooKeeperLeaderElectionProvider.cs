@@ -23,7 +23,7 @@ internal sealed class ZooKeeperLeaderData
 /// ZooKeeper implementation of the leader election provider.
 /// Uses ZooKeeper ephemeral sequential nodes for distributed coordination.
 /// </summary>
-public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionProvider
+public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionProvider, IAsyncDisposable
 {
     private readonly ZooKeeperLeaderElectionOptions options;
     private readonly ILogger<ZooKeeperLeaderElectionProvider> logger;
@@ -389,24 +389,54 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
         }
     }
 
-    /// <inheritdoc />
-    public void Dispose()
+    /// <summary>
+    /// Asynchronously disposes the ZooKeeper leader election provider and releases all resources.
+    /// </summary>
+    /// <remarks>
+    /// This method performs the following cleanup operations:
+    /// <list type="bullet">
+    /// <item><description>Closes the ZooKeeper connection asynchronously</description></item>
+    /// <item><description>Disposes the initialization lock</description></item>
+    /// </list>
+    /// This method is idempotent and can be called multiple times safely.
+    /// After disposal, all provider methods will throw <see cref="ObjectDisposedException"/>.
+    /// </remarks>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous disposal operation.</returns>
+    public async ValueTask DisposeAsync()
     {
         if (isDisposed)
             return;
 
         isDisposed = true;
 
-        try
+        if (zooKeeper != null)
         {
-            zooKeeper?.closeAsync().Wait(TimeSpan.FromSeconds(5));
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Error closing ZooKeeper connection during disposal");
+            try
+            {
+                await zooKeeper.closeAsync();
+            }
+            catch (Exception ex) when (ex is not SystemException)
+            {
+                logger.LogWarning(ex, "Error closing ZooKeeper connection during disposal");
+            }
         }
 
         initializationLock.Dispose();
+    }
+
+    /// <summary>
+    /// Synchronously disposes the ZooKeeper leader election provider and releases all resources.
+    /// </summary>
+    /// <remarks>
+    /// This method calls <see cref="DisposeAsync"/> and blocks until completion.
+    /// Prefer using <see cref="DisposeAsync"/> when possible to avoid blocking.
+    /// This method is idempotent and can be called multiple times safely.
+    /// After disposal, all provider methods will throw <see cref="ObjectDisposedException"/>.
+    /// The disposal is executed on a thread pool thread to avoid potential deadlocks in synchronization contexts.
+    /// </remarks>
+    public void Dispose()
+    {
+        Task.Run(() => DisposeAsync().AsTask()).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
