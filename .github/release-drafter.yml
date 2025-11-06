@@ -1,0 +1,151 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'feature'
+      - 'enhancement'
+      - 'feat'
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+  - title: '📚 Documentation'
+    labels:
+      - 'documentation'
+      - 'docs'
+  - title: '🧪 Tests'
+    labels:
+      - 'test'
+      - 'testing'
+  - title: '⚡ Performance'
+    labels:
+      - 'performance'
+      - 'perf'
+  - title: '🔧 Maintenance'
+    labels:
+      - 'chore'
+      - 'maintenance'
+  - title: '📦 Dependencies'
+    labels:
+      - 'dependencies'
+      - 'deps'
+  - title: '🔒 Security'
+    labels:
+      - 'security'
+  - title: '♻️ Refactoring'
+    labels:
+      - 'refactor'
+      - 'refactoring'
+
+change-template: '- $TITLE @$AUTHOR (#$NUMBER)'
+change-title-escapes: '\<*_&'
+
+version-resolver:
+  major:
+    labels:
+      - 'major'
+      - 'breaking'
+      - 'breaking-change'
+  minor:
+    labels:
+      - 'minor'
+      - 'feature'
+      - 'enhancement'
+  patch:
+    labels:
+      - 'patch'
+      - 'fix'
+      - 'bugfix'
+      - 'bug'
+      - 'documentation'
+      - 'chore'
+  default: patch
+
+autolabeler:
+  - label: 'documentation'
+    files:
+      - '*.md'
+      - 'docs/**/*'
+  - label: 'bug'
+    branch:
+      - '/fix\/.+/'
+    title:
+      - '/fix/i'
+  - label: 'feature'
+    branch:
+      - '/feat(ure)?\/.+/'
+    title:
+      - '/feat/i'
+  - label: 'chore'
+    branch:
+      - '/chore\/.+/'
+    title:
+      - '/chore/i'
+  - label: 'dependencies'
+    files:
+      - 'Directory.Packages.props'
+      - '**/*.csproj'
+    title:
+      - '/dependabot/i'
+      - '/dependencies/i'
+      - '/deps/i'
+  - label: 'test'
+    files:
+      - 'tests/**/*'
+      - '**/*Tests.cs'
+      - '**/*Test.cs'
+
+template: |
+  ## What's Changed
+  
+  $CHANGES
+  
+  ## 📦 NuGet Packages
+  
+  This release includes the following provider packages (each includes the core MultiLock framework):
+  
+  - **MultiLock.AzureBlobStorage** - Azure Blob Storage provider
+  - **MultiLock.Consul** - Consul provider
+  - **MultiLock.FileSystem** - File System provider
+  - **MultiLock.InMemory** - In-Memory provider (for testing)
+  - **MultiLock.PostgreSQL** - PostgreSQL provider
+  - **MultiLock.Redis** - Redis provider
+  - **MultiLock.SqlServer** - SQL Server provider
+  - **MultiLock.ZooKeeper** - ZooKeeper provider
+  
+  ### Installation
+  
+  Choose the provider you need - each package includes the core framework:
+  
+  ```bash
+  # For Redis
+  dotnet add package MultiLock.Redis --version $RESOLVED_VERSION
+  
+  # For PostgreSQL
+  dotnet add package MultiLock.PostgreSQL --version $RESOLVED_VERSION
+  
+  # For SQL Server
+  dotnet add package MultiLock.SqlServer --version $RESOLVED_VERSION
+  ```
+  
+  See the [README](https://github.com/steingran/MultiLock/blob/main/README.md) for complete usage instructions.
+  
+  ---
+  
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
+
+exclude-labels:
+  - 'skip-changelog'
+  - 'no-changelog'
+  - 'duplicate'
+  - 'invalid'
+  - 'wontfix'
+
+replacers:
+  # Remove conventional commit prefixes from titles
+  - search: '/^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?:\s*/i'
+    replace: ''
+

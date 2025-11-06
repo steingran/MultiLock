@@ -1,21 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
-        <PackageId>MultiLock.Consul</PackageId>
-        <PackageVersion>1.0.0</PackageVersion>
-        <Authors>MultiLock Contributors</Authors>
-        <Description>Consul provider for MultiLock framework</Description>
-        <PackageTags>leader-election;distributed-systems;consul;hashicorp</PackageTags>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <RepositoryUrl>https://github.com/steingran/MultiLock</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+    <PackageId>MultiLock.Consul</PackageId>
+    <Description>HashiCorp Consul provider for MultiLock - Leader Election framework for distributed systems. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;consul;hashicorp;service-mesh</PackageTags>
+  </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Consul" />
@@ -29,7 +19,7 @@
         <IncludeAssets>MultiLock.dll</IncludeAssets>
       </ProjectReference>
     </ItemGroup>
-  
+
     <Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
       <ItemGroup>
         <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
