@@ -1,21 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
-        <PackageId>MultiLock.Redis</PackageId>
-        <PackageVersion>1.0.0</PackageVersion>
-        <Authors>MultiLock.Net Contributors</Authors>
-        <Description>Redis provider for MultiLock.Net framework</Description>
-        <PackageTags>leader-election;distributed-systems;redis</PackageTags>
-        <PackageLicenseExpression>MIT</PackageLicenseExpression>
-        <RepositoryUrl>https://github.com/steingran/MultiLock.Net</RepositoryUrl>
-        <RepositoryType>git</RepositoryType>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
+    <PackageId>MultiLock.Redis</PackageId>
+    <Description>Redis provider for MultiLock - Leader Election framework for distributed systems. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;redis;cache;in-memory-database</PackageTags>
+  </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="StackExchange.Redis" />
@@ -24,10 +14,10 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\MultiLock\MultiLock.csproj">
-        <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
-        <IncludeAssets>MultiLock.Net.dll</IncludeAssets>
-      </ProjectReference>
+    <ProjectReference Include="..\..\MultiLock\MultiLock.csproj">
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+      <IncludeAssets>MultiLock.dll</IncludeAssets>
+    </ProjectReference>
     </ItemGroup>
 
     <Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
