@@ -1,0 +1,343 @@
+name: Publish to NuGet
+
+# This workflow publishes 8 provider packages to NuGet.org
+# Each provider package includes the core MultiLock framework embedded within it
+# Users only need to install one provider package (e.g., MultiLock.Redis)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g., 1.0.0). Leave empty to use MinVer from current commit.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run - build and validate packages without publishing'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Required for MinVer to calculate version from git history
+
+    - name: Setup .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Install dotnet-validate tool
+      run: dotnet tool install -g dotnet-validate
+
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build solution
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Start Docker Compose services and wait for health
+      run: docker compose up -d --wait
+      working-directory: ./tests
+
+    - name: Run all tests
+      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s --logger "trx;LogFileName=test-results.trx"
+      timeout-minutes: 10
+
+    - name: Stop Docker Compose services
+      if: always()
+      run: docker compose down
+      working-directory: ./tests
+
+    - name: Pack NuGet packages
+      run: dotnet pack --configuration Release --no-build --output ./artifacts
+      env:
+        # Override version if provided via workflow_dispatch
+        MinVerVersion: ${{ inputs.version }}
+
+    - name: Display package information
+      run: |
+        echo "📦 Packages created:"
+        ls -lh ./artifacts/*.nupkg
+        echo ""
+        echo "📋 Publishing plan:"
+        echo "  ✅ Provider packages (will be published):"
+        for pkg in ./artifacts/*.nupkg; do
+          pkg_name=$(basename "$pkg")
+          if [[ "$pkg_name" =~ \.(AzureBlobStorage|Consul|FileSystem|InMemory|PostgreSQL|Redis|SqlServer|ZooKeeper)\. ]]; then
+            echo "     - $pkg_name"
+          fi
+        done
+        echo ""
+        echo "  ⏭️  Core package (will be skipped - embedded in providers):"
+        for pkg in ./artifacts/*.nupkg; do
+          pkg_name=$(basename "$pkg")
+          if [[ "$pkg_name" =~ ^MultiLock\.[0-9] ]] || [[ "$pkg_name" == "MultiLock."*".nupkg" && ! "$pkg_name" =~ \.(AzureBlobStorage|Consul|FileSystem|InMemory|PostgreSQL|Redis|SqlServer|ZooKeeper)\. ]]; then
+            echo "     - $pkg_name"
+          fi
+        done
+        echo ""
+        echo "🔍 Package details:"
+        for pkg in ./artifacts/*.nupkg; do
+          pkg_name=$(basename "$pkg")
+          # Only show details for provider packages
+          if [[ "$pkg_name" =~ \.(AzureBlobStorage|Consul|FileSystem|InMemory|PostgreSQL|Redis|SqlServer|ZooKeeper)\. ]]; then
+            echo "----------------------------------------"
+            echo "Package: $pkg_name"
+            unzip -l "$pkg" | grep -E '\.dll$|\.xml$|README|LICENSE' || true
+          fi
+        done
+
+    - name: Validate packages
+      run: |
+        echo "🔍 Validating NuGet packages..."
+        for pkg in ./artifacts/*.nupkg; do
+          echo "Validating $(basename $pkg)..."
+          dotnet validate package local "$pkg" || exit 1
+        done
+        echo "✅ All packages validated successfully"
+
+    - name: Check for required package metadata
+      run: |
+        echo "🔍 Checking package metadata..."
+        for pkg in ./artifacts/*.nupkg; do
+          echo "Checking $(basename $pkg)..."
+          # Extract nuspec and check for required fields
+          unzip -q -o "$pkg" -d temp_extract
+          if [ -f temp_extract/*.nuspec ]; then
+            nuspec_file=$(find temp_extract -name "*.nuspec" | head -n 1)
+            
+            # Check for required metadata
+            if ! grep -q "<license" "$nuspec_file"; then
+              echo "❌ Missing license information in $(basename $pkg)"
+              exit 1
+            fi
+            
+            if ! grep -q "<repository" "$nuspec_file"; then
+              echo "⚠️  Warning: Missing repository information in $(basename $pkg)"
+            fi
+            
+            echo "✅ Metadata check passed for $(basename $pkg)"
+          fi
+          rm -rf temp_extract
+        done
+
+    - name: Upload packages as artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages
+        path: ./artifacts/*.nupkg
+        retention-days: 30
+
+    - name: Upload symbol packages as artifacts
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: symbol-packages
+        path: ./artifacts/*.snupkg
+        retention-days: 30
+
+    - name: Push to NuGet.org
+      if: ${{ !inputs.dry_run }}
+      run: |
+        echo "📤 Publishing packages to NuGet.org..."
+        echo ""
+        echo "ℹ️  Note: Excluding MultiLock.*.nupkg (core package is embedded in provider packages)"
+        echo ""
+
+        # Publish only provider packages (exclude the standalone MultiLock package)
+        for pkg in ./artifacts/*.nupkg; do
+          pkg_name=$(basename "$pkg")
+
+          # Skip the core MultiLock package (it's embedded in provider packages)
+          if [[ "$pkg_name" =~ ^MultiLock\.[0-9] ]] || [[ "$pkg_name" == "MultiLock."*".nupkg" && ! "$pkg_name" =~ \.(AzureBlobStorage|Consul|FileSystem|InMemory|PostgreSQL|Redis|SqlServer|ZooKeeper)\. ]]; then
+            echo "⏭️  Skipping $pkg_name (core package - embedded in providers)"
+            continue
+          fi
+
+          echo "📦 Publishing $pkg_name..."
+          dotnet nuget push "$pkg" \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate \
+            --no-symbols
+        done
+        echo ""
+        echo "✅ All provider packages published successfully"
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    - name: Push symbol packages to NuGet.org
+      if: ${{ !inputs.dry_run }}
+      run: |
+        if ls ./artifacts/*.snupkg 1> /dev/null 2>&1; then
+          echo "📤 Publishing symbol packages to NuGet.org..."
+          echo ""
+          echo "ℹ️  Note: Excluding MultiLock.*.snupkg (core package is embedded in provider packages)"
+          echo ""
+
+          for pkg in ./artifacts/*.snupkg; do
+            pkg_name=$(basename "$pkg")
+
+            # Skip the core MultiLock symbol package (it's embedded in provider packages)
+            if [[ "$pkg_name" =~ ^MultiLock\.[0-9] ]] || [[ "$pkg_name" == "MultiLock."*".snupkg" && ! "$pkg_name" =~ \.(AzureBlobStorage|Consul|FileSystem|InMemory|PostgreSQL|Redis|SqlServer|ZooKeeper)\. ]]; then
+              echo "⏭️  Skipping $pkg_name (core package - embedded in providers)"
+              continue
+            fi
+
+            echo "📦 Publishing $pkg_name..."
+            dotnet nuget push "$pkg" \
+              --api-key ${{ secrets.NUGET_API_KEY }} \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate
+          done
+          echo ""
+          echo "✅ All provider symbol packages published successfully"
+        else
+          echo "ℹ️  No symbol packages found to publish"
+        fi
+      env:
+        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    - name: Extract version from tag
+      if: startsWith(github.ref, 'refs/tags/v')
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📌 Version: $VERSION"
+
+    - name: Publish Release with Release Drafter
+      if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+      id: release_drafter
+      uses: release-drafter/release-drafter@v6
+      with:
+        config-name: release-drafter.yml
+        version: ${{ steps.get_version.outputs.version }}
+        tag: ${{ github.ref_name }}
+        publish: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload packages to GitHub Release
+      if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          ./artifacts/*.nupkg
+          ./artifacts/*.snupkg
+        fail_on_unmatched_files: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Update CHANGELOG.md
+      if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+      run: |
+        echo "📝 Updating CHANGELOG.md..."
+
+        # Get the release notes from the published release
+        RELEASE_NOTES=$(gh release view ${{ github.ref_name }} --json body -q .body)
+
+        # Create or update CHANGELOG.md
+        if [ -f CHANGELOG.md ]; then
+          # Find the first ## heading (first release entry) and preserve everything after it
+          # This is more robust than counting lines
+          if grep -q "^## \[" CHANGELOG.md; then
+            # Extract header (everything before first ## heading)
+            HEADER=$(sed -n '1,/^## \[/p' CHANGELOG.md | sed '$d')
+            # Extract existing releases (everything from first ## heading onwards)
+            EXISTING_RELEASES=$(sed -n '/^## \[/,$p' CHANGELOG.md)
+
+            # Rebuild CHANGELOG with new release inserted
+            {
+              echo "$HEADER"
+              echo "## [${{ steps.get_version.outputs.version }}] - $(date +%Y-%m-%d)"
+              echo ""
+              echo "$RELEASE_NOTES"
+              echo ""
+              echo "$EXISTING_RELEASES"
+            } > CHANGELOG.md.new
+          else
+            # No existing releases, just append after header
+            {
+              cat CHANGELOG.md
+              echo ""
+              echo "## [${{ steps.get_version.outputs.version }}] - $(date +%Y-%m-%d)"
+              echo ""
+              echo "$RELEASE_NOTES"
+            } > CHANGELOG.md.new
+          fi
+          mv CHANGELOG.md.new CHANGELOG.md
+        else
+          # Create new CHANGELOG.md
+          {
+            echo "# Changelog"
+            echo ""
+            echo "All notable changes to this project will be documented in this file."
+            echo ""
+            echo "The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),"
+            echo "and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."
+            echo ""
+            echo "## [${{ steps.get_version.outputs.version }}] - $(date +%Y-%m-%d)"
+            echo ""
+            echo "$RELEASE_NOTES"
+          } > CHANGELOG.md
+        fi
+
+        echo "✅ CHANGELOG.md updated"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Commit and push CHANGELOG.md
+      if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add CHANGELOG.md
+        if git diff --staged --quiet; then
+          echo "ℹ️  No changes to CHANGELOG.md"
+        else
+          git commit -m "chore: update CHANGELOG.md for v${{ steps.get_version.outputs.version }} [skip ci]"
+          git push origin HEAD:main
+          echo "✅ CHANGELOG.md committed and pushed"
+        fi
+
+    - name: Dry run summary
+      if: inputs.dry_run
+      run: |
+        echo "🏃 DRY RUN COMPLETED"
+        echo "===================="
+        echo "✅ Packages built successfully"
+        echo "✅ Packages validated successfully"
+        echo "✅ Tests passed"
+        echo ""
+        echo "ℹ️  Packages were NOT published to NuGet.org (dry run mode)"
+        echo ""
+        echo "📦 Packages that would be published:"
+        ls -1 ./artifacts/*.nupkg | xargs -n1 basename
+
+    - name: Summary
+      if: ${{ !inputs.dry_run && !failure() }}
+      run: |
+        echo "🎉 PUBLISH COMPLETED SUCCESSFULLY"
+        echo "=================================="
+        echo "✅ All packages published to NuGet.org"
+        echo "✅ GitHub release created"
+        echo ""
+        echo "📦 Published packages:"
+        ls -1 ./artifacts/*.nupkg | xargs -n1 basename
+        echo ""
+        echo "🔗 View packages at: https://www.nuget.org/profiles/steingran"
+
