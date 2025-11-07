@@ -1,4 +1,4 @@
-# PowerShell script to set up GitHub labels for the MultiLock repository
+﻿# PowerShell script to set up GitHub labels for the MultiLock repository
 # This script uses the GitHub CLI (gh) to create labels defined in labels.yml
 # 
 # Prerequisites:
@@ -170,4 +170,5 @@ if ($DryRun) {
     Write-Host "2. Start using labels on Pull Requests for automatic changelog generation" -ForegroundColor White
     Write-Host "3. See .github/PULL_REQUEST_TEMPLATE.md for label guidelines" -ForegroundColor White
 }
+
 
