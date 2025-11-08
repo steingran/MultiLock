@@ -107,7 +107,7 @@ MultiLock/
 ### Reporting Bugs
 
 - **Check existing issues** to avoid duplicates
-- **Use the bug report template** when creating a new issue
+- **Provide detailed information** when creating a new issue
 - **Include**:
   - Clear description of the problem
   - Steps to reproduce
@@ -118,7 +118,7 @@ MultiLock/
 ### Suggesting Enhancements
 
 - **Check existing issues** and discussions
-- **Use the feature request template**
+- **Clearly describe your feature request**
 - **Describe**:
   - The problem you're trying to solve
   - Your proposed solution
@@ -197,7 +197,7 @@ public async Task TryAcquireLeadershipAsync_WhenNotCurrentlyLeader_ShouldAcquire
     var provider = new InMemoryLeaderElectionProvider();
     
     // Act
-    var result = await provider.TryAcquireLeadershipAsync("group1", "participant1", TimeSpan.FromMinutes(5));
+    var result = await provider.TryAcquireLeadershipAsync("group1", "participant1", new Dictionary<string, string>(), TimeSpan.FromMinutes(5));
     
     // Assert
     result.ShouldBeTrue();
