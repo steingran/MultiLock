@@ -43,6 +43,7 @@ jobs:
       if: always()
       with:
         files: '**/TestResults/**/coverage.cobertura.xml'
+        token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: false
         verbose: true
 
