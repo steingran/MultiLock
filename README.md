@@ -1,5 +1,7 @@
 # MultiLock
 
+[![codecov](https://codecov.io/gh/steingran/MultiLock/branch/main/graph/badge.svg)](https://codecov.io/gh/steingran/MultiLock)
+
 A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, Redis, File System, In-Memory, Consul, and ZooKeeper.
 
 ## Architecture Overview
