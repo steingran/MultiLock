@@ -1,11 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MultiLock.Net;
-using MultiLock.Net.InMemory;
-using MultiLock.Net.FileSystem;
+using MultiLock.FileSystem;
+using MultiLock.InMemory;
+using MultiLock.MultiProvider;
 
-Console.WriteLine("=== LeaderElection.Net Multi-Provider Demo ===");
+Console.WriteLine("=== MultiLock Multi-Provider Demo ===");
 Console.WriteLine();
 Console.WriteLine("This demo shows multiple instances competing for leadership");
 Console.WriteLine("using different providers simultaneously.");
@@ -35,7 +35,7 @@ Console.WriteLine();
 var allTasks = Task.WhenAll(tasks);
 
 // Wait for user input
-await Task.Run(() => Console.ReadKey());
+await Task.Run(Console.ReadKey);
 
 Console.WriteLine();
 Console.WriteLine("Stopping all instances...");
@@ -53,11 +53,12 @@ catch (OperationCanceledException)
 }
 
 Console.WriteLine("All instances stopped.");
+return;
 
 static IHost CreateInMemoryHost()
 {
-    var builder = Host.CreateApplicationBuilder();
-    
+    HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole();
     builder.Logging.SetMinimumLevel(LogLevel.Information);
@@ -78,14 +79,14 @@ static IHost CreateInMemoryHost()
 
 static IHost CreateFileSystemHost()
 {
-    var builder = Host.CreateApplicationBuilder();
-    
+    HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole();
     builder.Logging.SetMinimumLevel(LogLevel.Information);
 
     builder.Services.AddFileSystemLeaderElection(
-        Path.Combine(Path.GetTempPath(), "LeaderElectionMultiProviderDemo"),
+        Path.Combine(Path.GetTempPath(), "MultiLock-MultiProviderDemo"),
         options =>
         {
             options.ElectionGroup = "multi-provider-demo-fs";
@@ -119,76 +120,5 @@ static async Task RunInstanceAsync(string instanceName, IHost host, Cancellation
     {
         Console.WriteLine($"[{instanceName}] Stopped.");
         host.Dispose();
-    }
-}
-
-/// <summary>
-/// Demo background service that shows leadership status using the AsyncEnumerable API.
-/// </summary>
-public class DemoBackgroundService : BackgroundService
-{
-    private readonly ILeaderElectionService _leaderElection;
-    private readonly ILogger<DemoBackgroundService> _logger;
-
-    public DemoBackgroundService(
-        ILeaderElectionService leaderElection,
-        ILogger<DemoBackgroundService> logger)
-    {
-        _leaderElection = leaderElection;
-        _logger = logger;
-    }
-
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Start listening to leadership changes using AsyncEnumerable
-        var leadershipTask = Task.Run(async () =>
-        {
-            await foreach (var change in _leaderElection.GetLeadershipChangesAsync(stoppingToken))
-            {
-                if (change.BecameLeader)
-                {
-                    _logger.LogInformation("🎉 [{ParticipantId}] Leadership acquired!",
-                        _leaderElection.ParticipantId);
-                }
-                else if (change.LostLeadership)
-                {
-                    _logger.LogWarning("😞 [{ParticipantId}] Leadership lost!",
-                        _leaderElection.ParticipantId);
-                }
-            }
-        }, stoppingToken);
-
-        var workCounter = 0;
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            if (_leaderElection.IsLeader)
-            {
-                // Perform leader-only work
-                workCounter++;
-                _logger.LogInformation("🏆 [{ParticipantId}] Leader performing work #{WorkCounter}",
-                    _leaderElection.ParticipantId, workCounter);
-
-                await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
-            }
-            else
-            {
-                // Follower behavior
-                _logger.LogInformation("👥 [{ParticipantId}] Follower waiting...",
-                    _leaderElection.ParticipantId);
-
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            }
-        }
-
-        // Wait for leadership monitoring to complete
-        try
-        {
-            await leadershipTask;
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when stopping
-        }
     }
 }
