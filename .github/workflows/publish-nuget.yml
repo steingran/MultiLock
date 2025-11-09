@@ -53,8 +53,16 @@ jobs:
       working-directory: ./tests
 
     - name: Run all tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s --logger "trx;LogFileName=test-results.trx"
+      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
       timeout-minutes: 10
+
+    - name: Upload coverage to CodeCov
+      uses: codecov/codecov-action@v4
+      if: always()
+      with:
+        files: '**/coverage.cobertura.xml'
+        fail_ci_if_error: false
+        verbose: true
 
     - name: Stop Docker Compose services
       if: always()
