@@ -27,7 +27,7 @@ jobs:
       contents: write
       packages: write
       id-token: write
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -53,8 +53,16 @@ jobs:
       working-directory: ./tests
 
     - name: Run all tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s --logger "trx;LogFileName=test-results.trx"
+      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
       timeout-minutes: 10
+
+    - name: Upload coverage to CodeCov
+      uses: codecov/codecov-action@v4
+      if: always()
+      with:
+        files: '**/TestResults/**/coverage.cobertura.xml'
+        fail_ci_if_error: false
+        verbose: true
 
     - name: Stop Docker Compose services
       if: always()
@@ -118,17 +126,17 @@ jobs:
           unzip -q -o "$pkg" -d temp_extract
           if [ -f temp_extract/*.nuspec ]; then
             nuspec_file=$(find temp_extract -name "*.nuspec" | head -n 1)
-            
+
             # Check for required metadata
             if ! grep -q "<license" "$nuspec_file"; then
               echo "❌ Missing license information in $(basename $pkg)"
               exit 1
             fi
-            
+
             if ! grep -q "<repository" "$nuspec_file"; then
               echo "⚠️  Warning: Missing repository information in $(basename $pkg)"
             fi
-            
+
             echo "✅ Metadata check passed for $(basename $pkg)"
           fi
           rm -rf temp_extract
