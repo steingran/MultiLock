@@ -13,9 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MultiLock.Net\MultiLock.Net.csproj" />
-    <ProjectReference Include="..\..\src\Providers\MultiLock.Net.InMemory\MultiLock.Net.InMemory.csproj" />
-    <ProjectReference Include="..\..\src\Providers\MultiLock.Net.FileSystem\MultiLock.Net.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\MultiLock\MultiLock.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.InMemory\MultiLock.InMemory.csproj" />
+    <ProjectReference Include="..\..\src\Providers\MultiLock.FileSystem\MultiLock.FileSystem.csproj" />
   </ItemGroup>
 
 </Project>

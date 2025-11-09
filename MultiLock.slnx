@@ -10,6 +10,7 @@
     <Project Path="src\Providers\MultiLock.ZooKeeper\MultiLock.ZooKeeper.csproj" Type="Classic C#" />
   </Folder>
   <Folder Name="/Samples/">
+    <Project Path="samples\MultiLock.MultiProvider\MultiLock.MultiProvider.csproj" Type="Classic C#" />
     <Project Path="samples\MultiLock.Sample\MultiLock.Sample.csproj" Type="Classic C#" />
   </Folder>
   <Folder Name="/Tests/">
