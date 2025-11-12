@@ -22,7 +22,13 @@
 
     <Target DependsOnTargets="ResolveReferences" Name="CopyProjectReferencesToPackage">
       <ItemGroup>
-        <BuildOutputInPackage Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference'))" />
+        <!-- Include DLL files from project references -->
+        <_ProjectReferenceDlls Include="@(ReferenceCopyLocalPaths-&gt;WithMetadataValue('ReferenceSourceTarget', 'ProjectReference')->WithMetadataValue('Extension', '.dll'))" />
+        <!-- Include corresponding PDB files by replacing .dll with .pdb -->
+        <_ProjectReferencePdbs Include="@(_ProjectReferenceDlls->'%(RootDir)%(Directory)%(Filename).pdb')" />
+        <!-- Add both DLLs and PDBs to the package -->
+        <BuildOutputInPackage Include="@(_ProjectReferenceDlls)" />
+        <BuildOutputInPackage Include="@(_ProjectReferencePdbs)" Condition="Exists('%(Identity)')" />
       </ItemGroup>
     </Target>
 
