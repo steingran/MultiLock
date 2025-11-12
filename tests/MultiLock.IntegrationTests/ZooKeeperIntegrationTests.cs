@@ -64,7 +64,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -90,7 +90,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -133,11 +133,11 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider1 = new ZooKeeperLeaderElectionProvider(
+        await using var provider1 = new ZooKeeperLeaderElectionProvider(
             Options.Create(options1),
             logger);
 
-        using var provider2 = new ZooKeeperLeaderElectionProvider(
+        await using var provider2 = new ZooKeeperLeaderElectionProvider(
             Options.Create(options2),
             logger);
 
@@ -186,11 +186,11 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider1 = new ZooKeeperLeaderElectionProvider(
+        await using var provider1 = new ZooKeeperLeaderElectionProvider(
             Options.Create(options1),
             logger);
 
-        using var provider2 = new ZooKeeperLeaderElectionProvider(
+        await using var provider2 = new ZooKeeperLeaderElectionProvider(
             Options.Create(options2),
             logger);
 
@@ -366,7 +366,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -406,7 +406,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -437,7 +437,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -479,7 +479,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
             ConnectionTimeout = TimeSpan.FromSeconds(10)
         };
 
-        using var provider = new ZooKeeperLeaderElectionProvider(
+        await using var provider = new ZooKeeperLeaderElectionProvider(
             Options.Create(options),
             logger);
 
@@ -504,6 +504,322 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
         await provider.ReleaseLeadershipAsync("test-group", "participant-1");
     }
 
+    [Fact]
+    public async Task TryAcquireLeadership_SameParticipantTwice_ShouldReuseNode()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var metadata = new Dictionary<string, string> { { "key", "value" } };
+
+        // Act - Acquire leadership first time
+        bool firstAcquire = await provider.TryAcquireLeadershipAsync(
+            "test-group",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        // Act - Try to acquire again with same participant
+        bool secondAcquire = await provider.TryAcquireLeadershipAsync(
+            "test-group",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        // Assert - Both should succeed (reusing the same node)
+        firstAcquire.ShouldBeTrue();
+        secondAcquire.ShouldBeTrue();
+
+        // Cleanup
+        await provider.ReleaseLeadershipAsync("test-group", "participant-1");
+    }
+
+    [Fact]
+    public async Task GetCurrentLeader_WhenNoLeader_ShouldReturnNull()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act - Get leader when no one has acquired leadership
+        LeaderInfo? leaderInfo = await provider.GetCurrentLeaderAsync("non-existent-group");
+
+        // Assert
+        leaderInfo.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task ReleaseLeadership_WhenNotHoldingLeadership_ShouldNotThrow()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act & Assert - Should not throw when releasing non-existent leadership
+        await provider.ReleaseLeadershipAsync("test-group", "participant-1");
+    }
+
+    [Fact]
+    public async Task UpdateHeartbeat_WithMetadataChanges_ShouldUpdateMetadata()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var initialMetadata = new Dictionary<string, string> { { "version", "1" } };
+        var updatedMetadata = new Dictionary<string, string> { { "version", "2" } };
+
+        await provider.TryAcquireLeadershipAsync(
+            "test-group",
+            "participant-1",
+            initialMetadata,
+            TimeSpan.FromMinutes(5));
+
+        // Act - Update heartbeat with new metadata
+        bool updated = await provider.UpdateHeartbeatAsync(
+            "test-group",
+            "participant-1",
+            updatedMetadata);
+
+        // Assert
+        updated.ShouldBeTrue();
+
+        // Verify metadata was updated
+        LeaderInfo? leaderInfo = await provider.GetCurrentLeaderAsync("test-group");
+        leaderInfo.ShouldNotBeNull();
+        leaderInfo.Metadata["version"].ShouldBe("2");
+
+        // Cleanup
+        await provider.ReleaseLeadershipAsync("test-group", "participant-1");
+    }
+
+    [Fact]
+    public async Task UpdateHeartbeat_WhenNodeDeleted_ShouldReturnFalse()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var metadata = new Dictionary<string, string> { { "key", "value" } };
+
+        await provider.TryAcquireLeadershipAsync(
+            "test-group",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        // Release leadership (deletes the node)
+        await provider.ReleaseLeadershipAsync("test-group", "participant-1");
+
+        // Act - Try to update heartbeat after node is deleted
+        bool updated = await provider.UpdateHeartbeatAsync(
+            "test-group",
+            "participant-1",
+            metadata);
+
+        // Assert
+        updated.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ShouldPreventFurtherOperations()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act - Dispose the provider
+        await provider.DisposeAsync();
+
+        // Assert - Operations should throw ObjectDisposedException
+        await Should.ThrowAsync<ObjectDisposedException>(async () =>
+            await provider.TryAcquireLeadershipAsync(
+                "test-group",
+                "participant-1",
+                new Dictionary<string, string>(),
+                TimeSpan.FromMinutes(5)));
+    }
+
+    [Fact]
+    public async Task DisposeAsync_CalledTwice_ShouldBeIdempotent()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Act - Dispose twice
+        await provider.DisposeAsync();
+        await provider.DisposeAsync();
+
+        // Assert - Should not throw
+        Assert.True(true);
+    }
+
+    [Fact]
+    public async Task MultipleElectionGroups_ShouldWorkIndependently()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        await using var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var metadata = new Dictionary<string, string> { { "key", "value" } };
+
+        // Act - Acquire leadership in multiple groups
+        bool group1 = await provider.TryAcquireLeadershipAsync(
+            "group-1",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        bool group2 = await provider.TryAcquireLeadershipAsync(
+            "group-2",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        // Assert - Should be leader in both groups
+        group1.ShouldBeTrue();
+        group2.ShouldBeTrue();
+
+        bool isLeaderGroup1 = await provider.IsLeaderAsync("group-1", "participant-1");
+        bool isLeaderGroup2 = await provider.IsLeaderAsync("group-2", "participant-1");
+
+        isLeaderGroup1.ShouldBeTrue();
+        isLeaderGroup2.ShouldBeTrue();
+
+        // Cleanup
+        await provider.ReleaseLeadershipAsync("group-1", "participant-1");
+        await provider.ReleaseLeadershipAsync("group-2", "participant-1");
+    }
+
+    [Fact]
+    public async Task HealthCheck_AfterDisposal_ShouldReturnFalse()
+    {
+        // Arrange
+        if (!await IsZooKeeperAvailableAsync())
+            Assert.Fail("ZooKeeper is not available");
+
+        var options = new ZooKeeperLeaderElectionOptions
+        {
+            ConnectionString = connectionString,
+            RootPath = rootPath,
+            SessionTimeout = TimeSpan.FromSeconds(30),
+            ConnectionTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        var provider = new ZooKeeperLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        // Verify it's healthy first
+        bool healthyBefore = await provider.HealthCheckAsync();
+        healthyBefore.ShouldBeTrue();
+
+        // Act - Dispose the provider
+        await provider.DisposeAsync();
+
+        // Assert - Health check should return false after disposal
+        bool healthyAfter = await provider.HealthCheckAsync();
+        healthyAfter.ShouldBeFalse();
+    }
+
     private async Task<bool> IsZooKeeperAvailableAsync()
     {
         try
@@ -516,7 +832,7 @@ public class ZooKeeperIntegrationTests : IAsyncLifetime
                 ConnectionTimeout = TimeSpan.FromSeconds(10)
             };
 
-            using var provider = new ZooKeeperLeaderElectionProvider(
+            await using var provider = new ZooKeeperLeaderElectionProvider(
                 Options.Create(options),
                 logger);
 
