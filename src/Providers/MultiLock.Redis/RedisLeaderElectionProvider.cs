@@ -219,7 +219,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
                 return null;
             }
 
-            LeaderData? leaderData = JsonSerializer.Deserialize<LeaderData>(value!);
+            LeaderData? leaderData = JsonSerializer.Deserialize<LeaderData>((string)value!);
 
             if (leaderData == null)
             {
