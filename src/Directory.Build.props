@@ -53,8 +53,11 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <DebugType>embedded</DebugType>
+    <!-- Use portable PDB for separate symbol packages -->
+    <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
+    <!-- Also include PDB files in the main package for embedded dependencies -->
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
   </PropertyGroup>
 
   <!-- Deterministic Builds for Reproducibility -->
