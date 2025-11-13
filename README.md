@@ -2,6 +2,15 @@
 
 [![codecov](https://codecov.io/gh/steingran/MultiLock/branch/main/graph/badge.svg)](https://codecov.io/gh/steingran/MultiLock)
 
+[![NuGet - Azure Blob Storage](https://img.shields.io/nuget/v/MultiLock.AzureBlobStorage.svg?label=AzureBlobStorage)](https://www.nuget.org/packages/MultiLock.AzureBlobStorage/)
+[![NuGet - SQL Server](https://img.shields.io/nuget/v/MultiLock.SqlServer.svg?label=SqlServer)](https://www.nuget.org/packages/MultiLock.SqlServer/)
+[![NuGet - PostgreSQL](https://img.shields.io/nuget/v/MultiLock.PostgreSQL.svg?label=PostgreSQL)](https://www.nuget.org/packages/MultiLock.PostgreSQL/)
+[![NuGet - Redis](https://img.shields.io/nuget/v/MultiLock.Redis.svg?label=Redis)](https://www.nuget.org/packages/MultiLock.Redis/)
+[![NuGet - File System](https://img.shields.io/nuget/v/MultiLock.FileSystem.svg?label=FileSystem)](https://www.nuget.org/packages/MultiLock.FileSystem/)
+[![NuGet - In-Memory](https://img.shields.io/nuget/v/MultiLock.InMemory.svg?label=InMemory)](https://www.nuget.org/packages/MultiLock.InMemory/)
+[![NuGet - Consul](https://img.shields.io/nuget/v/MultiLock.Consul.svg?label=Consul)](https://www.nuget.org/packages/MultiLock.Consul/)
+[![NuGet - ZooKeeper](https://img.shields.io/nuget/v/MultiLock.ZooKeeper.svg?label=ZooKeeper)](https://www.nuget.org/packages/MultiLock.ZooKeeper/)
+
 A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, Redis, File System, In-Memory, Consul, and ZooKeeper.
 
 ## Architecture Overview
