@@ -15,59 +15,63 @@ A comprehensive .NET framework for implementing the Leader Election pattern with
 
 ## Architecture Overview
 
-```mermaid
-graph TB
-    subgraph "Core Framework"
-        ILE[ILeaderElectionService]
-        LES[LeaderElectionService]
-        ILP[ILeaderElectionProvider]
-        LI[LeaderInfo]
-        EX[Exceptions]
-    end
-
-    subgraph "Providers"
-        IM[InMemory]
-        FS[FileSystem]
-        SQL[SQL Server]
-        ABS[Azure Blob]
-        RD[Redis]
-        CS[Consul]
-        ZK[ZooKeeper]
-        PG[PostgreSQL]
-    end
-
-    subgraph "Applications"
-        APP1[Sample App]
-        APP2[Multi-Provider Demo]
-        APP3[Your Application]
-    end
-
-    ILE --> LES
-    LES --> ILP
-    ILP --> IM
-    ILP --> FS
-    ILP --> SQL
-    ILP --> ABS
-    ILP --> RD
-    ILP --> CS
-    ILP --> ZK
-    ILP --> PG
-
-    APP1 --> ILE
-    APP2 --> ILE
-    APP3 --> ILE
-
-    style ILE fill:#e1f5fe
-    style LES fill:#e8f5e8
-    style ILP fill:#fff3e0
-    style IM fill:#f3e5f5
-    style FS fill:#f3e5f5
-    style SQL fill:#f3e5f5
-    style ABS fill:#f3e5f5
-    style RD fill:#f3e5f5
-    style CS fill:#f3e5f5
-    style ZK fill:#ffebee
-    style PG fill:#ffebee
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              APPLICATIONS                                  │
+│                                                                            │
+│    ┌──────────────┐    ┌──────────────────┐    ┌──────────────────┐        │
+│    │  Sample App  │    │ Multi-Provider   │    │ Your Application │        │
+│    │              │    │      Demo        │    │                  │        │
+│    └──────┬───────┘    └────────┬─────────┘    └────────┬─────────┘        │
+│           │                     │                       │                  │
+│           └─────────────────────┼───────────────────────┘                  │
+│                                 │                                          │
+└─────────────────────────────────┼──────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                           CORE FRAMEWORK                                   │
+│                                                                            │
+│    ┌──────────────────────────────────────────────────────────────┐        │
+│    │         ILeaderElectionService (Interface)                   │        │
+│    │  • StartAsync() / StopAsync()                                │        │
+│    │  • IsLeader / GetCurrentLeaderAsync()                        │        │
+│    │  • GetLeadershipChangesAsync()                               │        │
+│    └────────────────────────┬─────────────────────────────────────┘        │
+│                             │                                              │
+│                             ▼                                              │
+│    ┌──────────────────────────────────────────────────────────────┐        │
+│    │         LeaderElectionService (Implementation)               │        │
+│    │  • Election Logic                                            │        │
+│    │  • Heartbeat Monitoring                                      │        │
+│    │  • Event Publishing                                          │        │
+│    └────────────────────────┬─────────────────────────────────────┘        │
+│                             │                                              │
+│                             ▼                                              │
+│    ┌──────────────────────────────────────────────────────────────┐        │
+│    │      ILeaderElectionProvider (Interface)                     │        │
+│    │  • TryAcquireLeadershipAsync()                               │        │
+│    │  • ReleaseLeadershipAsync()                                  │        │
+│    │  • UpdateHeartbeatAsync()                                    │        │
+│    └────────────────────────┬─────────────────────────────────────┘        │
+│                             │                                              │
+└─────────────────────────────┼──────────────────────────────────────────────┘
+                              │
+                              ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                            PROVIDERS                                       │
+│                                                                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │   InMemory   │  │  FileSystem  │  │  SQL Server  │  │  PostgreSQL  │    │
+│  │              │  │              │  │              │  │              │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                                            │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
+│  │ Azure Blob   │  │    Redis     │  │    Consul    │  │  ZooKeeper   │    │
+│  │   Storage    │  │              │  │              │  │              │    │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Features
