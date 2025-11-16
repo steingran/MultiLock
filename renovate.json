@@ -4,7 +4,6 @@
     "config:recommended",
     ":rebaseStalePrs"
   ],
-  "rebaseWhen": "behind-base-branch",
   "packageRules": [
   ],
   "assignees": [
