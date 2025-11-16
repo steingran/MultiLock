@@ -73,7 +73,7 @@ jobs:
       working-directory: ./tests
 
     - name: Pack NuGet packages
-      run: dotnet pack --configuration Release --output ./artifacts
+      run: dotnet pack --configuration Release --no-restore --output ./artifacts
       env:
         # Override version if provided via workflow_dispatch
         MinVerVersion: ${{ inputs.version }}
