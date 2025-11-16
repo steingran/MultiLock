@@ -13,6 +13,11 @@
 
 A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, Redis, File System, In-Memory, Consul, and ZooKeeper.
 
+## Requirements
+
+- **.NET 8.0** or **.NET 10.0**
+- Supported platforms: Windows, Linux, macOS
+
 ## Architecture Overview
 
 ```
