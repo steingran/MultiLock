@@ -6,7 +6,7 @@
 
   <!-- Packages that don't require framework-specific versions -->
   <ItemGroup>
-    <PackageVersion Include="Azure.Storage.Blobs" Version="12.19.1" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.26.0" />
     <PackageVersion Include="Consul" Version="1.6.10.9" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="5.1.5" />
