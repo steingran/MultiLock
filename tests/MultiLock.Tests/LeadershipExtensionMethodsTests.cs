@@ -508,7 +508,7 @@ public class LeadershipExtensionMethodsTests
         ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;

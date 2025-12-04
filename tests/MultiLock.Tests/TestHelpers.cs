@@ -40,8 +40,37 @@ public static class TestHelpers
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+            }
+            catch (OperationCanceledException) when (DateTimeOffset.UtcNow < deadline)
+            {
+                // If cancelled before our timeout, check the condition one last time
+                bool finalCheck;
+                if (lockObject != null)
+                {
+                    lock (lockObject)
+                    {
+                        finalCheck = condition();
+                    }
+                }
+                else
+                {
+                    finalCheck = condition();
+                }
+
+                if (finalCheck)
+                {
+                    return;
+                }
+
+                // Re-throw if the condition still isn't met
+                throw;
+            }
         }
+
+        throw new TimeoutException($"Condition was not met within {timeout.TotalSeconds} seconds.");
     }
 
     /// <summary>
@@ -63,8 +92,26 @@ public static class TestHelpers
                 return;
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+            }
+            catch (OperationCanceledException) when (DateTimeOffset.UtcNow < deadline)
+            {
+                // If cancelled before our timeout, check the condition one last time
+                bool finalCheck = await condition();
+
+                if (finalCheck)
+                {
+                    return;
+                }
+
+                // Re-throw if the condition still isn't met
+                throw;
+            }
         }
+
+        throw new TimeoutException($"Condition was not met within {timeout.TotalSeconds} seconds.");
     }
 
     /// <summary>
