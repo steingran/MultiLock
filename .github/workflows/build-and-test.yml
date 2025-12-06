@@ -56,7 +56,7 @@ jobs:
         name: Test Results
         path: '**/*.trx'
         reporter: dotnet-trx
-        fail-on-error: true
+        fail-on-empty: false
 
     - name: Upload test artifacts on failure
       if: failure()

@@ -19,28 +19,37 @@ public static class TestHelpers
     /// <exception cref="TimeoutException">Thrown when the condition is not met within the timeout period.</exception>
     public static async Task WaitForConditionAsync(Func<bool> condition, TimeSpan timeout, CancellationToken cancellationToken, object? lockObject = null)
     {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        try
         {
-            bool conditionMet;
-            if (lockObject != null)
+            while (true)
             {
-                lock (lockObject)
+                bool conditionMet;
+                if (lockObject != null)
+                {
+                    lock (lockObject)
+                    {
+                        conditionMet = condition();
+                    }
+                }
+                else
                 {
                     conditionMet = condition();
                 }
-            }
-            else
-            {
-                conditionMet = condition();
-            }
 
-            if (conditionMet)
-            {
-                return;
-            }
+                if (conditionMet)
+                {
+                    return;
+                }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(10), linkedCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Condition was not met within the timeout period of {timeout.TotalSeconds} seconds.");
         }
     }
 
@@ -53,17 +62,26 @@ public static class TestHelpers
     /// <exception cref="TimeoutException">Thrown when the condition is not met within the timeout period.</exception>
     public static async Task WaitForConditionAsync(Func<Task<bool>> condition, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
-        while (DateTimeOffset.UtcNow < deadline)
+        using var timeoutCts = new CancellationTokenSource(timeout);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+
+        try
         {
-            bool conditionMet = await condition();
-
-            if (conditionMet)
+            while (true)
             {
-                return;
-            }
+                bool conditionMet = await condition();
 
-            await Task.Delay(TimeSpan.FromMilliseconds(10), cancellationToken);
+                if (conditionMet)
+                {
+                    return;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(10), linkedCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Condition was not met within the timeout period of {timeout.TotalSeconds} seconds.");
         }
     }
 
