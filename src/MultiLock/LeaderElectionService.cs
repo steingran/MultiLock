@@ -680,8 +680,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     {
         // Read until the channel is completed (not until cancelled)
         // This ensures all pending events are broadcast during graceful shutdown
-        // Note: ReadAllAsync() completes gracefully when the channel writer is completed,
-        // so no try-catch is needed for normal operation
+        // Note: ReadAllAsync() completes gracefully when the channel writer is completed
         await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             // Broadcast to all subscriber channels

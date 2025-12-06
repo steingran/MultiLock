@@ -328,11 +328,14 @@ public class AsyncEnumerableApiTests
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberReady = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
+            // Signal that we're about to start iterating
+            subscriberReady.SetResult();
             await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
             {
                 lock (eventsLock)
@@ -342,8 +345,10 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be ready (not just started, but actually iterating)
+        await subscriberReady.Task;
+        // Small additional delay to ensure the subscriber is fully registered in the channel
+        await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token);
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
