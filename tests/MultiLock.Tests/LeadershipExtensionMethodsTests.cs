@@ -509,7 +509,7 @@ public class LeadershipExtensionMethodsTests
         var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
@@ -534,8 +534,9 @@ public class LeadershipExtensionMethodsTests
         await service.WaitForLeadershipAsync(cts.Token);
         await service.StopAsync(cts.Token);
 
-        // Wait for debounce delay and event processing
-        await Task.Delay(TimeSpan.FromMilliseconds(150), cts.Token);
+        // Wait for debounce delay and event processing - debounce needs time to process events
+        // Each event is delayed by 100ms, so we need at least 200ms for 2 events plus processing time
+        await Task.Delay(TimeSpan.FromMilliseconds(300), cts.Token);
         await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(5), cts.Token, eventsLock);
 
         // Cleanup - Cancel and wait for event task to complete before asserting
