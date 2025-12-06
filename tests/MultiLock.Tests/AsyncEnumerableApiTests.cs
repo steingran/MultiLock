@@ -14,30 +14,29 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening for events BEFORE starting the service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
                     events.Add(e);
                 }
                 if (e.BecameLeader)
-                {
                     break; // Stop after first acquired event
-                }
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         // Start the service and wait for leadership
         await service.StartAsync(cts.Token);
@@ -62,16 +61,17 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
@@ -80,8 +80,8 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -103,30 +103,29 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(LeadershipEventType.Acquired, cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(LeadershipEventType.Acquired, cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
                     events.Add(e);
                 }
                 if (e.BecameLeader)
-                {
                     break; // Stop after first acquired event
-                }
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -150,30 +149,29 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(LeadershipEventType.Lost, cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(LeadershipEventType.Lost, cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
                     events.Add(e);
                 }
                 if (e.LostLeadership)
-                {
                     break; // Stop after first lost event
-                }
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -196,16 +194,17 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(LeadershipEventType.Changed, cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(LeadershipEventType.Changed, cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
@@ -214,8 +213,8 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -236,7 +235,7 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events1 = new List<LeadershipChangedEventArgs>();
         var events2 = new List<LeadershipChangedEventArgs>();
         var events3 = new List<LeadershipChangedEventArgs>();
@@ -244,12 +243,15 @@ public class AsyncEnumerableApiTests
         object events2Lock = new();
         object events3Lock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered1 = new TaskCompletionSource();
+        var subscriberRegistered2 = new TaskCompletionSource();
+        var subscriberRegistered3 = new TaskCompletionSource();
 
         // Act - Create three subscribers BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask1 = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered1))
             {
                 lock (events1Lock)
                 {
@@ -260,7 +262,7 @@ public class AsyncEnumerableApiTests
 
         var eventTask2 = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered2))
             {
                 lock (events2Lock)
                 {
@@ -271,7 +273,7 @@ public class AsyncEnumerableApiTests
 
         var eventTask3 = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered3))
             {
                 lock (events3Lock)
                 {
@@ -280,8 +282,8 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener tasks a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for all subscribers to be registered (no race condition)
+        await Task.WhenAll(subscriberRegistered1.Task, subscriberRegistered2.Task, subscriberRegistered3.Task);
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -324,16 +326,17 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
@@ -342,8 +345,8 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
@@ -365,16 +368,17 @@ public class AsyncEnumerableApiTests
     {
         // Arrange
         ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
-        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
         var events = new List<LeadershipChangedEventArgs>();
         object eventsLock = new();
         var cts = new CancellationTokenSource();
+        var subscriberRegistered = new TaskCompletionSource();
 
         // Act - Start listening BEFORE starting service
         CancellationToken cancellationToken = cts.Token;
         var eventTask = Task.Run(async () =>
         {
-            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsync(cancellationToken))
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered))
             {
                 lock (eventsLock)
                 {
@@ -383,8 +387,8 @@ public class AsyncEnumerableApiTests
             }
         }, cancellationToken);
 
-        // Give the event listener task a chance to start
-        await Task.Delay(TimeSpan.FromMilliseconds(50), cts.Token);
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
 
         await service.StartAsync(cts.Token);
         await service.WaitForLeadershipAsync(cts.Token);
