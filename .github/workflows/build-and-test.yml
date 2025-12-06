@@ -37,7 +37,7 @@ jobs:
       working-directory: ./tests
 
     - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s -d run.log --logger "trx;LogFileName=test-results-{framework}.trx" --collect:"XPlat Code Coverage"
+      run: dotnet test --configuration Release --no-build --verbosity normal --blame-hang-timeout 150s -d run.log --logger "trx;LogFilePrefix=testResults" --collect:"XPlat Code Coverage"
       timeout-minutes: 10
 
     - name: Upload coverage to Codecov
