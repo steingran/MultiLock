@@ -13,4 +13,8 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MultiLock.Tests" />
+  </ItemGroup>
+
 </Project>

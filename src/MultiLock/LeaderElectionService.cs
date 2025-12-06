@@ -680,8 +680,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     {
         // Read until the channel is completed (not until cancelled)
         // This ensures all pending events are broadcast during graceful shutdown
-        // Note: ReadAllAsync() completes gracefully when the channel writer is completed,
-        // so no try-catch is needed for normal operation
+        // Note: ReadAllAsync() completes gracefully when the channel writer is completed
         await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync().ConfigureAwait(false))
         {
             // Broadcast to all subscriber channels
@@ -705,42 +704,18 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// An async enumerable that yields leadership change events as they occur.
     /// The enumeration will continue until the service is disposed or the cancellation token is triggered.
     /// </returns>
-    public async IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsync(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
+    public IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsync(
+        CancellationToken cancellationToken = default)
+        => GetLeadershipChangesAsyncCore(eventTypes: null, cancellationToken, subscriberRegistered: null);
 
-        // Create a dedicated channel for this subscriber
-        var subscriberChannel = Channel.CreateUnbounded<LeadershipChangedEventArgs>(new UnboundedChannelOptions
-        {
-            SingleWriter = true,
-            SingleReader = true
-        });
-
-        // Register the subscriber channel
-        lock (subscriberLock)
-        {
-            subscriberChannels.Add(subscriberChannel);
-        }
-
-        try
-        {
-            // Read from the subscriber channel
-            await foreach (LeadershipChangedEventArgs eventArgs in subscriberChannel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
-            {
-                yield return eventArgs;
-            }
-        }
-        finally
-        {
-            // Unregister and complete the subscriber channel
-            lock (subscriberLock)
-            {
-                subscriberChannels.Remove(subscriberChannel);
-            }
-            subscriberChannel.Writer.TryComplete();
-        }
-    }
+    /// <summary>
+    /// Internal overload that signals when the subscriber is registered.
+    /// Used by tests to avoid race conditions.
+    /// </summary>
+    internal IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsyncCore(
+        CancellationToken cancellationToken,
+        TaskCompletionSource? subscriberRegistered)
+        => GetLeadershipChangesAsyncCore(eventTypes: null, cancellationToken, subscriberRegistered);
 
     /// <summary>
     /// Gets an async enumerable stream of filtered leadership change events.
@@ -751,9 +726,28 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// An async enumerable that yields filtered leadership change events as they occur.
     /// The enumeration will continue until the service is disposed or the cancellation token is triggered.
     /// </returns>
-    public async IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsync(
+    public IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsync(
         LeadershipEventType eventTypes,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default)
+        => GetLeadershipChangesAsyncCore(eventTypes, cancellationToken, subscriberRegistered: null);
+
+    /// <summary>
+    /// Internal overload for filtered events that signals when the subscriber is registered.
+    /// Used by tests to avoid race conditions.
+    /// </summary>
+    internal IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsyncCore(
+        LeadershipEventType eventTypes,
+        CancellationToken cancellationToken,
+        TaskCompletionSource? subscriberRegistered)
+        => GetLeadershipChangesAsyncCore((LeadershipEventType?)eventTypes, cancellationToken, subscriberRegistered);
+
+    /// <summary>
+    /// Core implementation that handles both filtered and unfiltered event streams.
+    /// </summary>
+    private async IAsyncEnumerable<LeadershipChangedEventArgs> GetLeadershipChangesAsyncCore(
+        LeadershipEventType? eventTypes,
+        [EnumeratorCancellation] CancellationToken cancellationToken,
+        TaskCompletionSource? subscriberRegistered)
     {
         ThrowIfDisposed();
 
@@ -770,20 +764,28 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             subscriberChannels.Add(subscriberChannel);
         }
 
+        // Signal that the subscriber is now registered
+        subscriberRegistered?.TrySetResult();
+
         try
         {
-            // Read from the subscriber channel and filter
+            // Read from the subscriber channel
             await foreach (LeadershipChangedEventArgs eventArgs in subscriberChannel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
             {
-                // Check if this event matches the requested event types
-                bool shouldYield = ((eventTypes & LeadershipEventType.Acquired) != 0 && eventArgs.BecameLeader) ||
-                                   ((eventTypes & LeadershipEventType.Lost) != 0 && eventArgs.LostLeadership) ||
-                                   ((eventTypes & LeadershipEventType.Changed) != 0);
-
-                if (shouldYield)
+                // If no filter specified, yield all events
+                if (eventTypes is null)
                 {
                     yield return eventArgs;
+                    continue;
                 }
+
+                // Check if this event matches the requested event types
+                bool shouldYield = ((eventTypes.Value & LeadershipEventType.Acquired) != 0 && eventArgs.BecameLeader) ||
+                                   ((eventTypes.Value & LeadershipEventType.Lost) != 0 && eventArgs.LostLeadership) ||
+                                   ((eventTypes.Value & LeadershipEventType.Changed) != 0);
+
+                if (shouldYield)
+                    yield return eventArgs;
             }
         }
         finally
