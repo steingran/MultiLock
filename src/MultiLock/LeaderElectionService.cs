@@ -39,6 +39,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     private LeadershipStatus currentStatus = LeadershipStatus.NoLeader();
     private Timer? heartbeatTimer;
     private Timer? electionTimer;
+    private Task? broadcastTask;
     private volatile bool isDisposed;
     private volatile int activeCallbacks;
 
@@ -70,8 +71,8 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         };
         broadcastChannel = Channel.CreateUnbounded<LeadershipChangedEventArgs>(channelOptions);
 
-        // Start the broadcast task
-        _ = Task.Run(BroadcastEventsAsync);
+        // Start the broadcast task and store reference for graceful shutdown
+        broadcastTask = Task.Run(BroadcastEventsAsync);
 
         this.logger.LogInformation("Leader election service initialized for participant {ParticipantId} in group {ElectionGroup}",
             ParticipantId, this.options.ElectionGroup);
@@ -163,7 +164,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         {
             logger.LogInformation("Stopping leader election service for participant {ParticipantId}", ParticipantId);
 
-            // Release leadership if we have it BEFORE cancelling the token
+            // Release leadership if we have it BEFORE completing the broadcast channel
             // This ensures the leadership lost event is broadcast to subscribers
             if (currentStatus.IsLeader)
             {
@@ -178,7 +179,27 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
                 }
             }
 
-            // Now cancel the token source to stop background tasks
+            // Complete the broadcast channel writer to signal no more events will be written
+            // This allows the broadcast task to finish processing any pending events
+            // Use TryComplete to avoid exception if already completed
+            broadcastChannel.Writer.TryComplete();
+
+            // Wait for the broadcast task to finish processing all pending events
+            if (broadcastTask != null)
+            {
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+                try
+                {
+                    await broadcastTask.WaitAsync(linkedCts.Token);
+                }
+                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
+                {
+                    logger.LogWarning("Broadcast task did not complete within timeout during shutdown");
+                }
+            }
+
+            // Now cancel the token source to stop any remaining background tasks
             await cancellationTokenSource.CancelAsync();
 
             // Stop timers
@@ -379,7 +400,8 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         cancellationTokenSource.Dispose();
 
         // Complete the broadcast channel to signal no more events will be written
-        broadcastChannel.Writer.Complete();
+        // Use TryComplete to avoid exception if already completed (e.g., by StopAsync)
+        broadcastChannel.Writer.TryComplete();
 
         // Complete all subscriber channels
         lock (subscriberLock)
@@ -670,7 +692,9 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     {
         try
         {
-            await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync(cancellationTokenSource.Token).ConfigureAwait(false))
+            // Read until the channel is completed (not until cancelled)
+            // This ensures all pending events are broadcast during graceful shutdown
+            await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync().ConfigureAwait(false))
             {
                 // Broadcast to all subscriber channels
                 lock (subscriberLock)
@@ -684,9 +708,9 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
                 }
             }
         }
-        catch (OperationCanceledException)
+        catch (ChannelClosedException)
         {
-            // Expected when service is stopping
+            // Expected when channel is completed during shutdown
         }
         catch (Exception ex)
         {

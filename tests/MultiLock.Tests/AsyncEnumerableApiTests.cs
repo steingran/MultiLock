@@ -408,4 +408,37 @@ public class AsyncEnumerableApiTests
         try { await eventTask; } catch (OperationCanceledException) { } // Wait for the background task to complete
         await services.DisposeAsync();
     }
+
+    [Fact]
+    public async Task StopAsync_WithoutStarting_ShouldNotThrow()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+
+        // Act & Assert - StopAsync should not throw even if the service was never started
+        await Should.NotThrowAsync(async () => await service.StopAsync(CancellationToken.None));
+
+        // Cleanup
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ShouldCompleteChannelWithTryComplete()
+    {
+        // Arrange - This test verifies that DisposeAsync uses TryComplete to avoid exceptions
+        // when the channel has already been completed by StopAsync
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        ILeaderElectionService service = services.GetRequiredService<ILeaderElectionService>();
+        var cts = new CancellationTokenSource();
+
+        await service.StartAsync(cts.Token);
+        await service.WaitForLeadershipAsync(cts.Token);
+
+        // Stop the service first (this completes the channel)
+        await service.StopAsync(cts.Token);
+
+        // Act & Assert - DisposeAsync should not throw even though the channel is already completed
+        await Should.NotThrowAsync(async () => await services.DisposeAsync());
+    }
 }
