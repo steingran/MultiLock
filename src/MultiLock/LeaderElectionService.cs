@@ -39,7 +39,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     private LeadershipStatus currentStatus = LeadershipStatus.NoLeader();
     private Timer? heartbeatTimer;
     private Timer? electionTimer;
-    private Task? broadcastTask;
+    private readonly Task broadcastTask;
     private volatile bool isDisposed;
     private volatile int activeCallbacks;
 
@@ -185,19 +185,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             broadcastChannel.Writer.TryComplete();
 
             // Wait for the broadcast task to finish processing all pending events
-            if (broadcastTask != null)
-            {
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-                try
-                {
-                    await broadcastTask.WaitAsync(linkedCts.Token);
-                }
-                catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
-                {
-                    logger.LogWarning("Broadcast task did not complete within timeout during shutdown");
-                }
-            }
+            await broadcastTask.WaitAsync(cancellationToken);
 
             // Now cancel the token source to stop any remaining background tasks
             await cancellationTokenSource.CancelAsync();
@@ -690,31 +678,22 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     private async Task BroadcastEventsAsync()
     {
-        try
+        // Read until the channel is completed (not until cancelled)
+        // This ensures all pending events are broadcast during graceful shutdown
+        // Note: ReadAllAsync() completes gracefully when the channel writer is completed,
+        // so no try-catch is needed for normal operation
+        await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync().ConfigureAwait(false))
         {
-            // Read until the channel is completed (not until cancelled)
-            // This ensures all pending events are broadcast during graceful shutdown
-            await foreach (LeadershipChangedEventArgs eventArgs in broadcastChannel.Reader.ReadAllAsync().ConfigureAwait(false))
+            // Broadcast to all subscriber channels
+            lock (subscriberLock)
             {
-                // Broadcast to all subscriber channels
-                lock (subscriberLock)
+                foreach (Channel<LeadershipChangedEventArgs> channel in subscriberChannels)
                 {
-                    foreach (Channel<LeadershipChangedEventArgs> channel in subscriberChannels)
-                    {
-                        // Use TryWrite to avoid blocking if a subscriber is slow
-                        // With unbounded channels, this should always succeed unless the channel is completed
-                        channel.Writer.TryWrite(eventArgs);
-                    }
+                    // Use TryWrite to avoid blocking if a subscriber is slow
+                    // With unbounded channels, this should always succeed unless the channel is completed
+                    channel.Writer.TryWrite(eventArgs);
                 }
             }
-        }
-        catch (ChannelClosedException)
-        {
-            // Expected when channel is completed during shutdown
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error in broadcast loop for participant {ParticipantId}", ParticipantId);
         }
     }
 
