@@ -291,12 +291,16 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     {
         ThrowIfDisposed();
 
-        while (!currentStatus.IsLeader && !cancellationToken.IsCancellationRequested)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
-        }
+        // If already leader, return immediately
+        if (currentStatus.IsLeader)
+            return;
 
-        cancellationToken.ThrowIfCancellationRequested();
+        // Wait for leadership acquisition event using the async enumerable API
+        await foreach (LeadershipChangedEventArgs e in GetLeadershipChangesAsync(cancellationToken))
+        {
+            if (e.BecameLeader)
+                return;
+        }
     }
 
     /// <summary>
@@ -311,15 +315,18 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     {
         ThrowIfDisposed();
 
-        while (!cancellationToken.IsCancellationRequested)
+        // Check if a leader is already elected
+        LeaderInfo? currentLeader = await GetCurrentLeaderAsync(cancellationToken);
+        if (currentLeader != null)
+            return currentLeader;
+
+        // Wait for any leadership change event that results in a leader being elected
+        await foreach (LeadershipChangedEventArgs _ in GetLeadershipChangesAsync(cancellationToken))
         {
+            // After each event, check if a leader is now elected
             LeaderInfo? leader = await GetCurrentLeaderAsync(cancellationToken);
             if (leader != null)
-            {
                 return leader;
-            }
-
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
         }
 
         throw new OperationCanceledException(cancellationToken);

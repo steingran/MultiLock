@@ -72,9 +72,7 @@ public static class TestHelpers
                 bool conditionMet = await condition();
 
                 if (conditionMet)
-                {
                     return;
-                }
 
                 await Task.Delay(TimeSpan.FromMilliseconds(10), linkedCts.Token);
             }

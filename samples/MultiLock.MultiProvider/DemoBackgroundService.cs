@@ -13,55 +13,32 @@ public class DemoBackgroundService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Start listening to leadership changes using AsyncEnumerable
-        var leadershipTask = Task.Run(async () =>
-        {
-            await foreach (LeadershipChangedEventArgs change in leaderElection.GetLeadershipChangesAsync(stoppingToken))
-            {
-                if (change.BecameLeader)
-                {
-                    logger.LogInformation("🎉 [{ParticipantId}] Leadership acquired!",
-                        leaderElection.ParticipantId);
-                }
-                else if (change.LostLeadership)
-                {
-                    logger.LogWarning("😞 [{ParticipantId}] Leadership lost!",
-                        leaderElection.ParticipantId);
-                }
-            }
-        }, stoppingToken);
-
         int workCounter = 0;
 
-        while (!stoppingToken.IsCancellationRequested)
+        // Listen to leadership changes and perform work accordingly
+        await foreach (LeadershipChangedEventArgs change in leaderElection.GetLeadershipChangesAsync(stoppingToken))
         {
-            if (leaderElection.IsLeader)
+            if (change.BecameLeader)
             {
-                // Perform leader-only work
-                workCounter++;
-                logger.LogInformation("🏆 [{ParticipantId}] Leader performing work #{WorkCounter}",
-                    leaderElection.ParticipantId, workCounter);
-
-                await Task.Delay(TimeSpan.FromSeconds(3), stoppingToken);
-            }
-            else
-            {
-                // Follower behavior
-                logger.LogInformation("👥 [{ParticipantId}] Follower waiting...",
+                logger.LogInformation("🎉 [{ParticipantId}] Leadership acquired!",
                     leaderElection.ParticipantId);
 
-                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-            }
-        }
+                // Perform leader-only work
+                while (leaderElection.IsLeader && !stoppingToken.IsCancellationRequested)
+                {
+                    workCounter++;
+                    logger.LogInformation("🏆 [{ParticipantId}] Leader performing work #{WorkCounter}",
+                        leaderElection.ParticipantId, workCounter);
 
-        // Wait for leadership monitoring to complete
-        try
-        {
-            await leadershipTask;
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when stopping
+                    // Small delay to avoid busy-waiting during leader work
+                    await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
+                }
+            }
+            else if (change.LostLeadership)
+            {
+                logger.LogWarning("😞 [{ParticipantId}] Leadership lost!",
+                    leaderElection.ParticipantId);
+            }
         }
     }
 }

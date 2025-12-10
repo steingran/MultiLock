@@ -34,6 +34,7 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
     private volatile bool isDisposed;
     private volatile bool sessionExpired;
     private org.apache.zookeeper.ZooKeeper? zooKeeper;
+    private TaskCompletionSource? connectionCompletionSource;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ZooKeeperLeaderElectionProvider"/> class.
@@ -471,6 +472,8 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
                 break;
             case Event.KeeperState.SyncConnected:
                 logger.LogInformation("ZooKeeper connection established/restored");
+                // Signal that the connection is now established
+                connectionCompletionSource?.TrySetResult();
                 break;
         }
 
@@ -479,10 +482,8 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
 
     private void ThrowIfDisposed()
     {
-        if (isDisposed)
-        {
-            throw new ObjectDisposedException(nameof(ZooKeeperLeaderElectionProvider));
-        }
+        if (!isDisposed) return;
+        throw new ObjectDisposedException(nameof(ZooKeeperLeaderElectionProvider));
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -515,18 +516,33 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
             string connectionString = options.ConnectionString;
             int sessionTimeout = (int)options.SessionTimeout.TotalMilliseconds;
 
+            // Create a completion source to signal when connection is established
+            connectionCompletionSource = new TaskCompletionSource();
+
             zooKeeper = new org.apache.zookeeper.ZooKeeper(connectionString, sessionTimeout, this);
 
-            // Wait for connection to be established
-            TimeSpan connectionTimeout = options.ConnectionTimeout;
-            DateTime startTime = DateTime.UtcNow;
-
-            while (zooKeeper.getState() != org.apache.zookeeper.ZooKeeper.States.CONNECTED)
+            // Check if connection is already established (handles synchronous connection case)
+            if (zooKeeper.getState() == org.apache.zookeeper.ZooKeeper.States.CONNECTED)
             {
-                if (DateTime.UtcNow - startTime > connectionTimeout)
-                    throw new LeaderElectionProviderException("Failed to connect to ZooKeeper within timeout");
+                connectionCompletionSource.TrySetResult();
+            }
 
-                await Task.Delay(100, cancellationToken);
+            // Wait for connection to be established using event-based signaling
+            TimeSpan connectionTimeout = options.ConnectionTimeout;
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(connectionTimeout);
+
+            try
+            {
+                await connectionCompletionSource.Task.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new LeaderElectionProviderException("Failed to connect to ZooKeeper within timeout");
+            }
+            finally
+            {
+                connectionCompletionSource = null;
             }
 
             if (options.AutoCreateRootPath)
