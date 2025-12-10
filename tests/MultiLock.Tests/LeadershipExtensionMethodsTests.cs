@@ -1,5 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MultiLock.Extensions;
+using MultiLock.InMemory;
 using Shouldly;
 using Xunit;
 
@@ -815,6 +817,341 @@ public class LeadershipExtensionMethodsTests
         eventSnapshot.ShouldContain(e => e.BecameLeader);
         eventSnapshot.ShouldContain(e => e.LostLeadership);
 
+        await services.DisposeAsync();
+    }
+
+    // Tests for WaitForLeadershipAsync method
+
+    [Fact]
+    public async Task WaitForLeadershipAsync_WhenAlreadyLeader_ShouldReturnImmediately()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        // Act - Start service and acquire leadership
+        await service.StartAsync(cts.Token);
+        await service.TryAcquireLeadershipAsync(cts.Token);
+
+        // Verify we are leader
+        service.IsLeader.ShouldBeTrue();
+
+        // Act - Call WaitForLeadershipAsync when already leader
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        await service.WaitForLeadershipAsync(cts.Token);
+        stopwatch.Stop();
+
+        // Assert - Should return immediately (within 100ms)
+        stopwatch.ElapsedMilliseconds.ShouldBeLessThan(100);
+
+        // Cleanup
+        await service.StopAsync(cts.Token);
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitForLeadershipAsync_ShouldWaitUntilLeadershipAcquired()
+    {
+        // Arrange - Create two services with shared provider to simulate leadership competition
+        var provider = new InMemoryLeaderElectionProvider(
+            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+
+        var serviceCollection1 = new ServiceCollection();
+        serviceCollection1.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection1.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection1.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-1";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection1.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services1 = serviceCollection1.BuildServiceProvider();
+
+        var serviceCollection2 = new ServiceCollection();
+        serviceCollection2.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection2.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection2.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-2";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection2.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services2 = serviceCollection2.BuildServiceProvider();
+
+        var service1 = (LeaderElectionService)services1.GetRequiredService<ILeaderElectionService>();
+        var service2 = (LeaderElectionService)services2.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act - Start first service (it will acquire leadership)
+        await service1.StartAsync(cts.Token);
+        service1.IsLeader.ShouldBeTrue();
+
+        // Start second service (it won't be leader initially)
+        await service2.StartAsync(cts.Token);
+        service2.IsLeader.ShouldBeFalse();
+
+        // Start waiting for leadership in background on service2
+        Task waitTask = service2.WaitForLeadershipAsync(cts.Token);
+        bool waitCompleted = false;
+
+        // Give the wait task time to start
+        await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token);
+
+        // Act - Stop service1 so service2 can acquire leadership
+        await service1.StopAsync(cts.Token);
+
+        // Wait for the WaitForLeadershipAsync to complete
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                if (waitTask.IsCompleted)
+                {
+                    await waitTask;
+                    waitCompleted = true;
+                    return true;
+                }
+                return false;
+            },
+            TimeSpan.FromSeconds(5),
+            cts.Token);
+
+        // Assert
+        service2.IsLeader.ShouldBeTrue();
+        waitCompleted.ShouldBeTrue();
+
+        // Cleanup
+        await service2.StopAsync(cts.Token);
+        await services1.DisposeAsync();
+        await services2.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitForLeadershipAsync_WithCancellation_ShouldThrow()
+    {
+        // Arrange - Create two services with shared provider
+        var provider = new InMemoryLeaderElectionProvider(
+            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+
+        var serviceCollection1 = new ServiceCollection();
+        serviceCollection1.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection1.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection1.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-1";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection1.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services1 = serviceCollection1.BuildServiceProvider();
+
+        var serviceCollection2 = new ServiceCollection();
+        serviceCollection2.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection2.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection2.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-2";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection2.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services2 = serviceCollection2.BuildServiceProvider();
+
+        var service1 = (LeaderElectionService)services1.GetRequiredService<ILeaderElectionService>();
+        var service2 = (LeaderElectionService)services2.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act - Start first service (it will acquire leadership)
+        await service1.StartAsync(cts.Token);
+        service1.IsLeader.ShouldBeTrue();
+
+        // Start second service (it won't be leader)
+        await service2.StartAsync(cts.Token);
+        service2.IsLeader.ShouldBeFalse();
+
+        // Create a separate cancellation token that we'll cancel
+        using var waitCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        // Act & Assert - Should throw OperationCanceledException
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => service2.WaitForLeadershipAsync(waitCts.Token));
+
+        // Cleanup
+        await service1.StopAsync(cts.Token);
+        await service2.StopAsync(cts.Token);
+        await services1.DisposeAsync();
+        await services2.DisposeAsync();
+    }
+
+    // Tests for WaitForLeaderAsync method
+
+    [Fact]
+    public async Task WaitForLeaderAsync_WhenLeaderExists_ShouldReturnImmediately()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+        // Act - Start service and acquire leadership
+        await service.StartAsync(cts.Token);
+        bool acquired = await service.TryAcquireLeadershipAsync(cts.Token);
+
+        // Verify we are leader
+        acquired.ShouldBeTrue();
+        service.IsLeader.ShouldBeTrue();
+
+        // Act - Call WaitForLeaderAsync when leader already exists
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        LeaderInfo leader = await service.WaitForLeaderAsync(cts.Token);
+        stopwatch.Stop();
+
+        // Assert - Should return immediately (within 100ms)
+        stopwatch.ElapsedMilliseconds.ShouldBeLessThan(100);
+        leader.ShouldNotBeNull();
+        leader.LeaderId.ShouldBe("test-participant");
+
+        // Cleanup
+        await service.StopAsync(cts.Token);
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitForLeaderAsync_ShouldWaitUntilLeaderElected()
+    {
+        // Arrange - Create a service with shared provider, but don't start any service yet
+        var provider = new InMemoryLeaderElectionProvider(
+            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-1";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services = serviceCollection.BuildServiceProvider();
+
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act - Start waiting for leader before any service is started
+        Task<LeaderInfo> waitTask = service.WaitForLeaderAsync(cts.Token);
+        bool waitCompleted = false;
+        LeaderInfo? electedLeader = null;
+
+        // Give the wait task time to start
+        await Task.Delay(TimeSpan.FromMilliseconds(100), cts.Token);
+
+        // Act - Start the service so it acquires leadership
+        await service.StartAsync(cts.Token);
+
+        // Wait for the WaitForLeaderAsync to complete
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                if (waitTask.IsCompleted)
+                {
+                    electedLeader = await waitTask;
+                    waitCompleted = true;
+                    return true;
+                }
+                return false;
+            },
+            TimeSpan.FromSeconds(5),
+            cts.Token);
+
+        // Assert
+        service.IsLeader.ShouldBeTrue();
+        waitCompleted.ShouldBeTrue();
+        electedLeader.ShouldNotBeNull();
+        electedLeader.LeaderId.ShouldBe("participant-1");
+
+        // Cleanup
+        await service.StopAsync(cts.Token);
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitForLeaderAsync_WithCancellation_ShouldThrow()
+    {
+        // Arrange - Create a service but don't start it, so WaitForLeaderAsync will wait
+        var provider = new InMemoryLeaderElectionProvider(
+            new LoggerFactory().CreateLogger<InMemoryLeaderElectionProvider>());
+
+        var serviceCollection = new ServiceCollection();
+        serviceCollection.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        serviceCollection.AddSingleton<ILeaderElectionProvider>(provider);
+        serviceCollection.Configure<LeaderElectionOptions>(options =>
+        {
+            options.ParticipantId = "participant-1";
+            options.ElectionGroup = "test-group";
+            options.HeartbeatInterval = TimeSpan.FromMilliseconds(100);
+            options.HeartbeatTimeout = TimeSpan.FromMilliseconds(300);
+            options.ElectionInterval = TimeSpan.FromMilliseconds(50);
+            options.AutoStart = false;
+        });
+        serviceCollection.AddSingleton<ILeaderElectionService, LeaderElectionService>();
+        ServiceProvider services = serviceCollection.BuildServiceProvider();
+
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Create a separate cancellation token that we'll cancel
+        using var waitCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        // Act & Assert - Should throw OperationCanceledException
+        await Should.ThrowAsync<OperationCanceledException>(
+            () => service.WaitForLeaderAsync(waitCts.Token));
+
+        // Cleanup
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task WaitForLeaderAsync_ShouldReturnCorrectLeaderInfo()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        // Act - Start service and acquire leadership
+        await service.StartAsync(cts.Token);
+        bool acquired = await service.TryAcquireLeadershipAsync(cts.Token);
+
+        // Act - Get leader info
+        LeaderInfo leader = await service.WaitForLeaderAsync(cts.Token);
+
+        // Assert
+        acquired.ShouldBeTrue();
+        leader.ShouldNotBeNull();
+        leader.LeaderId.ShouldBe("test-participant");
+        leader.LeadershipAcquiredAt.ShouldNotBe(default);
+        leader.LastHeartbeat.ShouldNotBe(default);
+
+        // Cleanup
+        await service.StopAsync(cts.Token);
         await services.DisposeAsync();
     }
 }
