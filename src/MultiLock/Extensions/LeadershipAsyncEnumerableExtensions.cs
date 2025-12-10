@@ -309,14 +309,12 @@ public static class LeadershipAsyncEnumerableExtensions
         await foreach (LeadershipChangedEventArgs item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
         {
             buffer.Add(item);
-            DateTime lastEventTime = DateTime.UtcNow;
 
             // Simple approach: wait a bit and check if more events arrived
             await Task.Delay(timeSpan, cancellationToken).ConfigureAwait(false);
 
-            // If enough time has passed, emit the last event
-            if (DateTime.UtcNow - lastEventTime < timeSpan || buffer.Count <= 0)
-                continue;
+            // If no new events arrived during the debounce window, emit the last event
+            if (buffer.Count <= 0) continue;
 
             yield return buffer[^1]; // Return the last event
             buffer.Clear();
