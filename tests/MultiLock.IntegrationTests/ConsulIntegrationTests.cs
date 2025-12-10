@@ -197,14 +197,20 @@ public class ConsulIntegrationTests : IAsyncLifetime
 
         await provider1.ReleaseLeadershipAsync("test-group", "participant-1");
 
-        // Wait for Consul's SessionLockDelay to expire
-        await Task.Delay(TimeSpan.FromSeconds(16));
-
-        bool acquired2 = await provider2.TryAcquireLeadershipAsync(
-            "test-group",
-            "participant-2",
-            metadata,
-            TimeSpan.FromMinutes(5));
+        // Wait for Consul's SessionLockDelay to expire by polling for leadership acquisition
+        bool acquired2 = false;
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                acquired2 = await provider2.TryAcquireLeadershipAsync(
+                    "test-group",
+                    "participant-2",
+                    metadata,
+                    TimeSpan.FromMinutes(5));
+                return acquired2;
+            },
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
 
         // Assert
         acquired2.ShouldBeTrue();
@@ -334,8 +340,11 @@ public class ConsulIntegrationTests : IAsyncLifetime
         await leaderElection1.StartAsync();
         await leaderElection2.StartAsync();
 
-        // Wait a bit for the initial election process to complete
-        await Task.Delay(TimeSpan.FromSeconds(1));
+        // Wait for the initial election process to complete by checking if leadership state is determined
+        await TestHelpers.WaitForConditionAsync(
+            () => leaderElection1.IsLeader || leaderElection2.IsLeader,
+            TimeSpan.FromSeconds(5),
+            CancellationToken.None);
 
         // Act & Assert
         // After StartAsync, one should be leader and the other should not
@@ -363,11 +372,17 @@ public class ConsulIntegrationTests : IAsyncLifetime
         // Verify leadership is released
         leader.IsLeader.ShouldBeFalse();
 
-        // Wait for Consul's SessionLockDelay to expire
-        await Task.Delay(TimeSpan.FromSeconds(16));
+        // Wait for Consul's SessionLockDelay to expire by polling for leadership acquisition
+        bool becameLeader = false;
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                becameLeader = await follower.TryAcquireLeadershipAsync();
+                return becameLeader;
+            },
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
 
-        // The other participant should be able to become leader now
-        bool becameLeader = await follower.TryAcquireLeadershipAsync();
         becameLeader.ShouldBeTrue();
         follower.IsLeader.ShouldBeTrue();
     }

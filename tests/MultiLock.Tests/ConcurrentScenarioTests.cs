@@ -152,7 +152,7 @@ public class ConcurrentScenarioTests
                         successfulAcquisitions++;
                     }
 
-                    // Hold leadership briefly
+                    // Hold leadership briefly to create contention
                     await Task.Delay(10);
 
                     await provider.ReleaseLeadershipAsync(
@@ -167,7 +167,7 @@ public class ConcurrentScenarioTests
                     }
                 }
 
-                // Small delay between attempts
+                // Small delay between attempts to create contention
                 await Task.Delay(5);
             }
         }).ToArray();
@@ -438,6 +438,7 @@ public class ConcurrentScenarioTests
         {
             string participantId = $"participant{i}";
             await Task.Delay(Random.Shared.Next(0, 50)); // Random delays
+
             bool participantAcquired = await provider.TryAcquireLeadershipAsync(
                 "split-brain-test",
                 participantId,
@@ -446,7 +447,7 @@ public class ConcurrentScenarioTests
             return new { ParticipantId = participantId, Acquired = participantAcquired };
         }).ToArray();
 
-        await Task.WhenAll(acquireTasks.Concat(new[] { releaseTask }));
+        await Task.WhenAll(acquireTasks.Concat([releaseTask]));
         var results = await Task.WhenAll(acquireTasks);
 
         // Assert - At most one participant should be leader (no split-brain)
@@ -526,14 +527,14 @@ public class ConcurrentScenarioTests
                 new Dictionary<string, string>(),
                 TimeSpan.FromSeconds(2));
 
-            if (acquired)
-            {
-                // Hold leadership briefly
-                await Task.Delay(Random.Shared.Next(10, 50));
+            if (!acquired) return acquired;
 
-                // Release
-                await provider.ReleaseLeadershipAsync("concurrent-failover-test", leaderId);
-            }
+            // Random delay to create realistic timing variations and test thread safety
+            // under different execution patterns
+            await Task.Delay(Random.Shared.Next(10, 50));
+
+            // Release
+            await provider.ReleaseLeadershipAsync("concurrent-failover-test", leaderId);
 
             return acquired;
         }).ToArray();
