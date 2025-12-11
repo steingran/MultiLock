@@ -1,73 +1,98 @@
 {
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
   extends: [
-    "config:recommended",
-    ":dependencyDashboard",
-    ":semanticCommits",
-    ":automergeDigest",
-    ":automergeBranch"
+    'config:recommended',
+    ':dependencyDashboard',
+    ':semanticCommits',
+    ':automergeDigest',
+    ':automergeBranch',
   ],
-  timezone: "UTC",
-  schedule: ["before 8am"],
-  labels: ["dependencies"],
+  timezone: 'UTC',
+  schedule: [
+    'before 8am',
+  ],
+  labels: [
+    'dependencies',
+  ],
   assigneesFromCodeOwners: true,
   reviewersFromCodeOwners: true,
   platformAutomerge: true,
   packageRules: [
     {
-      description: "Group .NET SDK updates",
-      matchManagers: ["github-actions"],
-      matchPackageNames: ["actions/setup-dotnet"],
-      groupName: "dotnet-sdk"
-    },
-    {
-      description: "Group GitHub Actions updates", 
-      matchManagers: ["github-actions"],
-      excludePackageNames: ["actions/setup-dotnet"],
-      groupName: "github-actions",
-      automerge: true
-    },
-    {
-      description: "Group Microsoft packages",
-      matchPackagePatterns: ["^Microsoft\\."],
-      groupName: "microsoft-packages",
-      schedule: ["before 8am on monday"]
-    },
-    {
-      description: "Group test packages",
-      matchPackagePatterns: [
-        "^xunit",
-        "^coverlet", 
-        "^Microsoft\\.NET\\.Test\\.Sdk",
-        "^Shouldly"
+      description: 'Group .NET SDK updates',
+      matchManagers: [
+        'github-actions',
       ],
-      groupName: "test-packages",
-      automerge: true
-    },
-    {
-      description: "Auto-merge patch updates for stable packages",
-      matchUpdateTypes: ["patch"],
-      matchPackagePatterns: [
-        "^StackExchange\\.Redis",
-        "^Npgsql",
-        "^Consul",
-        "^ZooKeeperNetEx"
+      matchPackageNames: [
+        'actions/setup-dotnet',
       ],
-      automerge: true
+      groupName: 'dotnet-sdk',
     },
     {
-      description: "Require approval for major updates",
-      matchUpdateTypes: ["major"],
+      description: 'Group GitHub Actions updates',
+      matchManagers: [
+        'github-actions',
+      ],
+      groupName: 'github-actions',
+      automerge: true,
+      matchPackageNames: [
+        '!actions/setup-dotnet',
+      ],
+    },
+    {
+      description: 'Group Microsoft packages',
+      groupName: 'microsoft-packages',
+      schedule: [
+        'before 8am on monday',
+      ],
+      matchPackageNames: [
+        '/^Microsoft\\./',
+      ],
+    },
+    {
+      description: 'Group test packages',
+      groupName: 'test-packages',
+      automerge: true,
+      matchPackageNames: [
+        '/^xunit/',
+        '/^coverlet/',
+        '/^Microsoft\\.NET\\.Test\\.Sdk/',
+        '/^Shouldly/',
+      ],
+    },
+    {
+      description: 'Auto-merge patch updates for stable packages',
+      matchUpdateTypes: [
+        'patch',
+      ],
+      automerge: true,
+      matchPackageNames: [
+        '/^StackExchange\\.Redis/',
+        '/^Npgsql/',
+        '/^Consul/',
+        '/^ZooKeeperNetEx/',
+      ],
+    },
+    {
+      description: 'Require approval for major updates',
+      matchUpdateTypes: [
+        'major',
+      ],
       automerge: false,
-      labels: ["major-update", "needs-review"]
-    }
+      labels: [
+        'major-update',
+        'needs-review',
+      ],
+    },
   ],
   vulnerabilityAlerts: {
-    labels: ["security"],
+    labels: [
+      'security',
+    ],
     assigneesFromCodeOwners: true,
-    reviewersFromCodeOwners: true
+    reviewersFromCodeOwners: true,
   },
   lockFileMaintenance: {
-    enabled: false
-  }
+    enabled: false,
+  },
 }
