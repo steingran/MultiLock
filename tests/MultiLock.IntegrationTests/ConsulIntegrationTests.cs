@@ -387,7 +387,121 @@ public class ConsulIntegrationTests : IAsyncLifetime
         follower.IsLeader.ShouldBeTrue();
     }
 
-    private static IHost CreateHost(string participantId)
+    [Fact]
+    public async Task Consul_ReleaseLeadership_ShouldAllowNewLeader_WithEventDriven()
+    {
+        // Arrange
+        if (!await IsConsulAvailableAsync())
+            Assert.Fail("Consul is not available");
+
+        var options = new ConsulLeaderElectionOptions
+        {
+            Address = "http://localhost:8500",
+            KeyPrefix = keyPrefix,
+            SessionTtl = TimeSpan.FromSeconds(60),
+            SessionLockDelay = TimeSpan.FromSeconds(15)
+        };
+
+        using var provider1 = new ConsulLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        using var provider2 = new ConsulLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var metadata = new Dictionary<string, string> { { "key", "value" } };
+
+        // Act - First provider acquires leadership
+        bool acquired1 = await provider1.TryAcquireLeadershipAsync(
+            "test-group",
+            "participant-1",
+            metadata,
+            TimeSpan.FromMinutes(5));
+
+        acquired1.ShouldBeTrue();
+
+        // Release leadership
+        await provider1.ReleaseLeadershipAsync("test-group", "participant-1");
+
+        // Wait for new leader using event-driven approach
+        bool acquired2 = false;
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                acquired2 = await provider2.TryAcquireLeadershipAsync(
+                    "test-group",
+                    "participant-2",
+                    metadata,
+                    TimeSpan.FromMinutes(5));
+                return acquired2;
+            },
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
+
+        // Assert
+        acquired2.ShouldBeTrue();
+
+        // Cleanup
+        await provider2.ReleaseLeadershipAsync("test-group", "participant-2");
+    }
+
+    [Fact]
+    public async Task Consul_LeaderElection_ShouldWork_WithEventDrivenWaiting()
+    {
+        // Arrange
+        if (!await IsConsulAvailableAsync())
+            Assert.Fail("Consul is not available");
+
+        // Use a unique election group to avoid conflicts with other tests
+        string uniqueElectionGroup = $"event-driven-test-{Guid.NewGuid()}";
+        host1 = CreateHost("leader-1", uniqueElectionGroup);
+        host2 = CreateHost("follower-1", uniqueElectionGroup);
+
+        await host1.StartAsync();
+        await host2.StartAsync();
+
+        var leader = host1.Services.GetRequiredService<ILeaderElectionService>();
+        var follower = host2.Services.GetRequiredService<ILeaderElectionService>();
+
+        // Start the services - this will trigger the initial election process
+        await leader.StartAsync();
+        await follower.StartAsync();
+
+        // Act - Wait for leader to be elected using event-driven approach (synchronous condition)
+        await TestHelpers.WaitForConditionAsync(
+            () => leader.IsLeader || follower.IsLeader,
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
+
+        // Determine which one became leader
+        ILeaderElectionService actualLeader = leader.IsLeader ? leader : follower;
+        ILeaderElectionService actualFollower = leader.IsLeader ? follower : leader;
+
+        actualLeader.IsLeader.ShouldBeTrue();
+        actualFollower.IsLeader.ShouldBeFalse();
+
+        // Release leadership and wait for follower to acquire it
+        await actualLeader.ReleaseLeadershipAsync();
+
+        // Wait for Consul's SessionLockDelay to expire by polling for leadership acquisition
+        bool becameLeader = false;
+        await TestHelpers.WaitForConditionAsync(
+            async () =>
+            {
+                becameLeader = await actualFollower.TryAcquireLeadershipAsync();
+                return becameLeader;
+            },
+            TimeSpan.FromSeconds(20),
+            CancellationToken.None);
+
+        // Assert
+        becameLeader.ShouldBeTrue();
+        actualFollower.IsLeader.ShouldBeTrue();
+        actualLeader.IsLeader.ShouldBeFalse();
+    }
+
+    private static IHost CreateHost(string participantId, string? electionGroup = null)
     {
         return Host.CreateDefaultBuilder()
             .ConfigureServices(services =>
@@ -395,7 +509,7 @@ public class ConsulIntegrationTests : IAsyncLifetime
                 services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
                 services.AddConsulLeaderElection("http://localhost:8500", options =>
                 {
-                    options.ElectionGroup = "integration-test";
+                    options.ElectionGroup = electionGroup ?? "integration-test";
                     options.ParticipantId = participantId;
                     options.HeartbeatInterval = TimeSpan.FromSeconds(5);
                     options.HeartbeatTimeout = TimeSpan.FromSeconds(15);

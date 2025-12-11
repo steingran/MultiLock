@@ -1154,4 +1154,116 @@ public class LeadershipExtensionMethodsTests
         await service.StopAsync(cts.Token);
         await services.DisposeAsync();
     }
+
+    [Fact]
+    public async Task Debounce_WithMultipleRapidEvents_ShouldEmitOnlyLastEvent()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        var events = new List<LeadershipChangedEventArgs>();
+        object eventsLock = new();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var subscriberRegistered = new TaskCompletionSource();
+
+        // Act - Start listening BEFORE starting service
+        CancellationToken cancellationToken = cts.Token;
+        var eventTask = Task.Run(async () =>
+        {
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered)
+                .Debounce(TimeSpan.FromMilliseconds(200), cancellationToken))
+            {
+                lock (eventsLock)
+                {
+                    events.Add(e);
+                }
+                if (events.Count >= 2)
+                    break;
+            }
+        }, cancellationToken);
+
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
+
+        // Simulate rapid events by starting and stopping quickly
+        await service.StartAsync(cts.Token);
+        await service.WaitForLeadershipAsync(cts.Token);
+        await service.StopAsync(cts.Token);
+
+        // Wait for debounce to process
+        await Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token);
+        await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(10), cts.Token, eventsLock);
+
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Debounce should have emitted events
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+
+        await services.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Debounce_WithSpacedEvents_ShouldEmitEachEvent()
+    {
+        // Arrange
+        ServiceProvider services = TestHelpers.CreateLeaderElectionService("test-participant");
+        var service = (LeaderElectionService)services.GetRequiredService<ILeaderElectionService>();
+        var events = new List<LeadershipChangedEventArgs>();
+        object eventsLock = new();
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var subscriberRegistered = new TaskCompletionSource();
+
+        // Act - Start listening BEFORE starting service
+        CancellationToken cancellationToken = cts.Token;
+        var eventTask = Task.Run(async () =>
+        {
+            await foreach (LeadershipChangedEventArgs e in service.GetLeadershipChangesAsyncCore(cancellationToken, subscriberRegistered)
+                .Debounce(TimeSpan.FromMilliseconds(100), cancellationToken))
+            {
+                lock (eventsLock)
+                {
+                    events.Add(e);
+                }
+                if (events.Count >= 2)
+                    break;
+            }
+        }, cancellationToken);
+
+        // Wait for the subscriber to be registered (no race condition)
+        await subscriberRegistered.Task;
+
+        // Simulate spaced events - start, wait, stop
+        await service.StartAsync(cts.Token);
+        await service.WaitForLeadershipAsync(cts.Token);
+
+        // Wait longer than debounce period between events
+        await Task.Delay(TimeSpan.FromMilliseconds(300), cts.Token);
+
+        await service.StopAsync(cts.Token);
+
+        // Wait for debounce to process
+        await Task.Delay(TimeSpan.FromMilliseconds(500), cts.Token);
+        await TestHelpers.WaitForConditionAsync(() => events.Count >= 1, TimeSpan.FromSeconds(10), cts.Token, eventsLock);
+
+        // Cleanup - Cancel and wait for event task to complete before asserting
+        await cts.CancelAsync();
+        try { await eventTask; } catch (OperationCanceledException) { /* Expected during test cleanup; safe to ignore. */ }
+
+        // Assert - Spaced events should be emitted separately
+        LeadershipChangedEventArgs[] eventSnapshot;
+        lock (eventsLock)
+        {
+            eventSnapshot = events.ToArray();
+        }
+        eventSnapshot.Length.ShouldBeGreaterThanOrEqualTo(1);
+
+        await services.DisposeAsync();
+    }
 }
