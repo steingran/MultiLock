@@ -39,7 +39,7 @@ services:
 
   # Redis for Redis provider testing
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: leaderelection-redis
     ports:
       - "6379:6379"
