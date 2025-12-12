@@ -87,7 +87,7 @@ services:
 
   # SQL Server for SQL Server provider testing
   sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:2025-latest
     container_name: leaderelection-sqlserver
     environment:
       SA_PASSWORD: LeaderElection123!
