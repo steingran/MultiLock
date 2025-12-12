@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL for PostgreSQL provider testing
   postgres:
-    image: postgres:15
+    image: postgres:18
     container_name: leaderelection-postgres
     environment:
       POSTGRES_DB: leaderelection
