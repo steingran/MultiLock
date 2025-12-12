@@ -21,7 +21,7 @@ services:
 
   # ZooKeeper for ZooKeeper provider testing
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.4.0
+    image: confluentinc/cp-zookeeper:7.9.5
     container_name: leaderelection-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
