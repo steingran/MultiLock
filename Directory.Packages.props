@@ -6,7 +6,7 @@
 
   <!-- Packages that support both .NET 8 and .NET 10 -->
   <ItemGroup>
-    <PackageVersion Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.27.0" />
     <PackageVersion Include="Consul" Version="1.7.14.10" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.1.4" />
