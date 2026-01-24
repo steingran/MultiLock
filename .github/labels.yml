@@ -1,11 +1,11 @@
 # GitHub Labels Configuration
-# This file defines the labels used for automatic changelog generation
+# This file defines the labels used for categorizing pull requests and issues
 # To apply these labels to your repository, you can use:
 # - GitHub CLI: gh label create <name> --color <color> --description <description>
 # - GitHub Settings UI: Settings > Labels
 # - github-label-sync tool: https://github.com/Financial-Times/github-label-sync
 
-# Type Labels - Used for categorizing changes in changelog
+# Type Labels - Used for categorizing changes in releases
 
 - name: feature
   color: '0e8a16'
@@ -109,11 +109,11 @@
 
 - name: skip-changelog
   color: 'ffffff'
-  description: 'Do not include in changelog'
+  description: 'Do not include in release notes'
 
 - name: no-changelog
   color: 'ffffff'
-  description: 'Exclude from changelog'
+  description: 'Exclude from release notes'
 
 - name: duplicate
   color: 'cfd3d7'

@@ -320,7 +320,6 @@ When triggered by a tag, creates a release with:
 - Package files attached
 - Auto-generated release notes
 - Installation instructions
-- Link to CHANGELOG.md
 
 ---
 
