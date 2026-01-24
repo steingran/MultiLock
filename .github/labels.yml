@@ -107,11 +107,11 @@
 
 # Workflow Labels
 
-- name: skip-changelog
+- name: skip-release-notes
   color: 'ffffff'
   description: 'Do not include in release notes'
 
-- name: no-changelog
+- name: no-release-notes
   color: 'ffffff'
   description: 'Exclude from release notes'
 

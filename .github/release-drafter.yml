@@ -138,8 +138,8 @@ template: |
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 
 exclude-labels:
-  - 'skip-changelog'
-  - 'no-changelog'
+  - 'skip-release-notes'
+  - 'no-release-notes'
   - 'duplicate'
   - 'invalid'
   - 'wontfix'
