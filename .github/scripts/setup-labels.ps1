@@ -79,8 +79,8 @@ $labels = @(
     @{name="patch"; color="c5def5"; description="Bug fixes and patches - patch version bump"},
     
     # Workflow Labels
-    @{name="skip-changelog"; color="ffffff"; description="Do not include in changelog"},
-    @{name="no-changelog"; color="ffffff"; description="Exclude from changelog"},
+    @{name="skip-changelog"; color="ffffff"; description="Do not include in release notes"},
+    @{name="no-changelog"; color="ffffff"; description="Exclude from release notes"},
     @{name="duplicate"; color="cfd3d7"; description="This issue or pull request already exists"},
     @{name="invalid"; color="e4e669"; description="This does not seem right"},
     @{name="wontfix"; color="ffffff"; description="This will not be worked on"},
@@ -167,7 +167,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
     Write-Host "1. Review labels in GitHub: https://github.com/$Repository/labels" -ForegroundColor White
-    Write-Host "2. Start using labels on Pull Requests for automatic changelog generation" -ForegroundColor White
+    Write-Host "2. Start using labels on Pull Requests for automatic release notes generation" -ForegroundColor White
     Write-Host "3. See .github/PULL_REQUEST_TEMPLATE.md for label guidelines" -ForegroundColor White
 }
 

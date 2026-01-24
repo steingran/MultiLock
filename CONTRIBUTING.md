@@ -346,11 +346,6 @@ If you're adding a new provider:
 - Update provider-specific documentation
 - Add code examples for new functionality
 
-### Changelog
-
-- The changelog is automatically generated from PR labels
-- Ensure your PR has appropriate labels for changelog categorization
-
 ## Community
 
 ### Getting Help
