@@ -68,7 +68,7 @@ The MultiLock project publishes **8 provider packages**, each containing the cor
 11. Upload packages as artifacts
 12. Push packages to NuGet.org (unless dry run)
 13. Push symbol packages (.snupkg) for debugging
-14. Create GitHub release with changelog
+14. Create GitHub release with release notes
 
 ---
 
@@ -280,7 +280,6 @@ After publishing, verify packages on NuGet.org:
 
 ### Before Publishing
 
-1. ✅ Update CHANGELOG.md with release notes
 2. ✅ Ensure all tests pass locally
 3. ✅ Review package metadata in .csproj files
 4. ✅ Test packages locally with `dotnet pack`

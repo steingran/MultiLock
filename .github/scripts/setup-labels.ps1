@@ -79,8 +79,8 @@ $labels = @(
     @{name="patch"; color="c5def5"; description="Bug fixes and patches - patch version bump"},
     
     # Workflow Labels
-    @{name="skip-changelog"; color="ffffff"; description="Do not include in release notes"},
-    @{name="no-changelog"; color="ffffff"; description="Exclude from release notes"},
+    @{name="skip-release-notes"; color="ffffff"; description="Do not include in release notes"},
+    @{name="no-release-notes"; color="ffffff"; description="Exclude from release notes"},
     @{name="duplicate"; color="cfd3d7"; description="This issue or pull request already exists"},
     @{name="invalid"; color="e4e669"; description="This does not seem right"},
     @{name="wontfix"; color="ffffff"; description="This will not be worked on"},
