@@ -234,7 +234,7 @@ jobs:
     - name: Publish Release with Release Drafter
       if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
       id: release_drafter
-      uses: release-drafter/release-drafter@v6
+      uses: release-drafter/release-drafter@v7
       with:
         config-name: release-drafter.yml
         version: ${{ steps.get_version.outputs.version }}
