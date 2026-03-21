@@ -101,5 +101,60 @@ public class InMemoryServiceCollectionExtensionsTests
         leaderElectionProvider.ShouldNotBeNull();
         leaderElectionProvider.ShouldBeOfType<InMemoryLeaderElectionProvider>();
     }
+
+    // AddInMemorySemaphore tests
+
+    [Fact]
+    public void AddInMemorySemaphore_WithNullServices_ShouldThrowArgumentNullException()
+    {
+        IServiceCollection? services = null;
+        Should.Throw<ArgumentNullException>(() => services!.AddInMemorySemaphore())
+            .ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddInMemorySemaphore_WithValidServices_ShouldRegisterProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInMemorySemaphore(o => o.SemaphoreName = "test-sem");
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        ISemaphoreProvider? semaphoreProvider = provider.GetService<ISemaphoreProvider>();
+        semaphoreProvider.ShouldNotBeNull();
+        semaphoreProvider.ShouldBeOfType<InMemorySemaphoreProvider>();
+        provider.GetService<ISemaphoreService>().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void AddInMemorySemaphore_WithConfigureOptions_ShouldSucceed()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddInMemorySemaphore(o =>
+        {
+            o.SemaphoreName = "test-sem";
+            o.MaxCount = 3;
+        });
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        provider.GetService<ISemaphoreService>().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void AddInMemorySemaphore_WithNullConfigureOptions_ShouldSucceed()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        // Null configureOptions means SemaphoreName stays at default;
+        // SemaphoreService validation is deferred until resolution.
+        // Only verify the provider itself is registered eagerly.
+        services.AddInMemorySemaphore(configureOptions: null);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        ISemaphoreProvider? semaphoreProvider = provider.GetService<ISemaphoreProvider>();
+        semaphoreProvider.ShouldNotBeNull();
+        semaphoreProvider.ShouldBeOfType<InMemorySemaphoreProvider>();
+    }
 }
 
