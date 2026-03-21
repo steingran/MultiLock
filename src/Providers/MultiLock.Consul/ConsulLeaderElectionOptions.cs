@@ -55,7 +55,7 @@ public sealed class ConsulLeaderElectionOptions
         if (SessionTtl < TimeSpan.FromSeconds(10) || SessionTtl > TimeSpan.FromHours(24))
             throw new ArgumentException("Session TTL must be between 10 seconds and 24 hours.", nameof(SessionTtl));
 
-        if (SessionLockDelay < TimeSpan.Zero || SessionLockDelay > TimeSpan.FromMinutes(60))
-            throw new ArgumentException("Session lock delay must be between 0 and 60 minutes.", nameof(SessionLockDelay));
+        if (SessionLockDelay < TimeSpan.Zero || SessionLockDelay > TimeSpan.FromSeconds(60))
+            throw new ArgumentException("Session lock delay must be between 0 and 60 seconds.", nameof(SessionLockDelay));
     }
 }

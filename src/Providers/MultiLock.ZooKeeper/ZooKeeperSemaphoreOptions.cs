@@ -1,0 +1,60 @@
+﻿namespace MultiLock.ZooKeeper;
+
+/// <summary>
+/// Configuration options for the ZooKeeper semaphore provider.
+/// </summary>
+public sealed class ZooKeeperSemaphoreOptions
+{
+    /// <summary>
+    /// Gets or sets the ZooKeeper connection string.
+    /// Default is "localhost:2181".
+    /// </summary>
+    public string ConnectionString { get; set; } = "localhost:2181";
+
+    /// <summary>
+    /// Gets or sets the root path for semaphore nodes in ZooKeeper.
+    /// Default is "/semaphores".
+    /// </summary>
+    public string RootPath { get; set; } = "/semaphores";
+
+    /// <summary>
+    /// Gets or sets the session timeout for ZooKeeper connections.
+    /// Default is 30 seconds.
+    /// </summary>
+    public TimeSpan SessionTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Gets or sets the connection timeout for ZooKeeper connections.
+    /// Default is 10 seconds.
+    /// </summary>
+    public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to automatically create the root path if it doesn't exist.
+    /// Default is true.
+    /// </summary>
+    public bool AutoCreateRootPath { get; set; } = true;
+
+    /// <summary>
+    /// Validates the configuration options.
+    /// </summary>
+    /// <exception cref="ArgumentException">Thrown when configuration is invalid.</exception>
+    public void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(ConnectionString))
+            throw new ArgumentException("Connection string cannot be null or empty.", nameof(ConnectionString));
+
+        if (string.IsNullOrWhiteSpace(RootPath))
+            throw new ArgumentException("Root path cannot be null or empty.", nameof(RootPath));
+
+        if (!RootPath.StartsWith('/'))
+            throw new ArgumentException("Root path must start with '/'.", nameof(RootPath));
+
+        if (SessionTimeout <= TimeSpan.Zero || SessionTimeout > TimeSpan.FromMinutes(60))
+            throw new ArgumentException("Session timeout must be greater than 0 and at most 60 minutes.", nameof(SessionTimeout));
+
+        if (ConnectionTimeout <= TimeSpan.Zero || ConnectionTimeout > TimeSpan.FromMinutes(10))
+            throw new ArgumentException("Connection timeout must be greater than 0 and at most 10 minutes.", nameof(ConnectionTimeout));
+    }
+}
+

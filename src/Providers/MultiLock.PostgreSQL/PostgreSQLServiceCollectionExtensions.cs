@@ -3,10 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 namespace MultiLock.PostgreSQL;
 
 /// <summary>
-/// Extension methods for configuring PostgreSQL leader election services.
+/// Extension methods for configuring PostgreSQL leader election and semaphore services.
 /// </summary>
 public static class PostgreSqlServiceCollectionExtensions
 {
+    // Leader Election Methods
     /// <summary>
     /// Adds PostgreSQL leader election services to the dependency injection container.
     /// </summary>
@@ -68,5 +69,70 @@ public static class PostgreSqlServiceCollectionExtensions
                 options.SchemaName = schemaName;
             },
             configureLeaderElectionOptions);
+    }
+
+    // Semaphore Methods
+
+    /// <summary>
+    /// Adds PostgreSQL semaphore services to the dependency injection container.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">An action to configure the PostgreSQL options.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddPostgreSqlSemaphore(
+        this IServiceCollection services,
+        Action<PostgreSqlSemaphoreOptions> configureOptions,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        services.Configure(configureOptions);
+
+        if (configureSemaphoreOptions != null)
+            services.Configure(configureSemaphoreOptions);
+
+        return services.AddSemaphore<PostgreSqlSemaphoreProvider>();
+    }
+
+    /// <summary>
+    /// Adds PostgreSQL semaphore services to the dependency injection container with connection string.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">The PostgreSQL connection string.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddPostgreSqlSemaphore(
+        this IServiceCollection services,
+        string connectionString,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddPostgreSqlSemaphore(
+            options => options.ConnectionString = connectionString,
+            configureSemaphoreOptions);
+    }
+
+    /// <summary>
+    /// Adds PostgreSQL semaphore services to the dependency injection container with connection string and table configuration.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">The PostgreSQL connection string.</param>
+    /// <param name="tableName">The name of the semaphore table.</param>
+    /// <param name="schemaName">The schema name for the semaphore table.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddPostgreSqlSemaphore(
+        this IServiceCollection services,
+        string connectionString,
+        string tableName,
+        string schemaName = "public",
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddPostgreSqlSemaphore(
+            options =>
+            {
+                options.ConnectionString = connectionString;
+                options.TableName = tableName;
+                options.SchemaName = schemaName;
+            },
+            configureSemaphoreOptions);
     }
 }
