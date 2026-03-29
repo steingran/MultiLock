@@ -11,7 +11,7 @@
 [![NuGet - Consul](https://img.shields.io/nuget/v/MultiLock.Consul.svg?label=Consul)](https://www.nuget.org/packages/MultiLock.Consul/)
 [![NuGet - ZooKeeper](https://img.shields.io/nuget/v/MultiLock.ZooKeeper.svg?label=ZooKeeper)](https://www.nuget.org/packages/MultiLock.ZooKeeper/)
 
-A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, Redis, File System, In-Memory, Consul, and ZooKeeper.
+A comprehensive .NET framework for implementing **Leader Election** and **Distributed Semaphores** patterns with support for multiple providers including Azure Blob Storage, SQL Server, PostgreSQL, Redis, File System, In-Memory, Consul, and ZooKeeper.
 
 ## Requirements
 
@@ -37,32 +37,25 @@ A comprehensive .NET framework for implementing the Leader Election pattern with
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                           CORE FRAMEWORK                                   │
 │                                                                            │
-│    ┌──────────────────────────────────────────────────────────────┐        │
-│    │         ILeaderElectionService (Interface)                   │        │
-│    │  • StartAsync() / StopAsync()                                │        │
-│    │  • IsLeader / GetCurrentLeaderAsync()                        │        │
-│    │  • GetLeadershipChangesAsync()                               │        │
-│    └────────────────────────┬─────────────────────────────────────┘        │
-│                             │                                              │
-│                             ▼                                              │
-│    ┌──────────────────────────────────────────────────────────────┐        │
-│    │         LeaderElectionService (Implementation)               │        │
-│    │  • Election Logic                                            │        │
-│    │  • Heartbeat Monitoring                                      │        │
-│    │  • Event Publishing                                          │        │
-│    └────────────────────────┬─────────────────────────────────────┘        │
-│                             │                                              │
-│                             ▼                                              │
-│    ┌──────────────────────────────────────────────────────────────┐        │
-│    │      ILeaderElectionProvider (Interface)                     │        │
-│    │  • TryAcquireLeadershipAsync()                               │        │
-│    │  • ReleaseLeadershipAsync()                                  │        │
-│    │  • UpdateHeartbeatAsync()                                    │        │
-│    └────────────────────────┬─────────────────────────────────────┘        │
-│                             │                                              │
-└─────────────────────────────┼──────────────────────────────────────────────┘
-                              │
-                              ▼
+│  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐  │
+│  │  ILeaderElectionService         │  │  ISemaphoreService              │  │
+│  │  • StartAsync() / StopAsync()   │  │  • AcquireAsync()               │  │
+│  │  • IsLeader                     │  │  • TryAcquireAsync()            │  │
+│  │  • GetLeadershipChangesAsync()  │  │  • GetStatusChangesAsync()      │  │
+│  └───────────────┬─────────────────┘  └───────────────┬─────────────────┘  │
+│                  │                                    │                    │
+│                  ▼                                    ▼                    │
+│  ┌─────────────────────────────────┐  ┌─────────────────────────────────┐  │
+│  │  ILeaderElectionProvider        │  │  ISemaphoreProvider             │  │
+│  │  • TryAcquireLeadershipAsync()  │  │  • TryAcquireAsync()            │  │
+│  │  • ReleaseLeadershipAsync()     │  │  • ReleaseAsync()               │  │
+│  │  • UpdateHeartbeatAsync()       │  │  • UpdateHeartbeatAsync()       │  │
+│  └───────────────┬─────────────────┘  └───────────────┬─────────────────┘  │
+│                  │                                    │                    │
+└──────────────────┼────────────────────────────────────┼────────────────────┘
+                   │                                    │
+                   └────────────────┬───────────────────┘
+                                    ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                            PROVIDERS                                       │
 │                                                                            │
@@ -82,8 +75,9 @@ A comprehensive .NET framework for implementing the Leader Election pattern with
 ## Features
 
 - **Multiple Providers**: Support for various storage backends
-- **Distributed Mutex**: First-to-acquire becomes leader strategy
-- **Heartbeat Monitoring**: Automatic leader health monitoring and failover
+- **Leader Election**: First-to-acquire becomes leader strategy with automatic failover
+- **Distributed Semaphores**: Control concurrent access with configurable slot limits
+- **Heartbeat Monitoring**: Automatic health monitoring and failover
 - **Resilient Design**: Handles transient and persistent failures gracefully
 - **Thread-Safe**: All operations are thread-safe
 - **Configurable**: Extensive configuration options for timeouts, retry policies, etc.
@@ -601,6 +595,181 @@ Use `GetLeadershipChangesAsync()` to subscribe to these events and optionally fi
 - **ElectionInterval**: How often followers attempt to become leader
 - **LockTimeout**: Maximum time to hold a lock during election
 - **AutoStart**: Whether to automatically start the election process
+
+## Distributed Semaphores
+
+Distributed semaphores allow you to control concurrent access to a shared resource across multiple instances. Unlike leader election (which allows only one holder), semaphores allow a configurable number of concurrent holders.
+
+### Use Cases
+
+- **Rate Limiting**: Limit concurrent API calls to an external service
+- **Resource Pooling**: Control access to a limited pool of resources (database connections, licenses, etc.)
+- **Throttling**: Limit concurrent processing of expensive operations
+- **Capacity Management**: Ensure only N instances process work simultaneously
+
+### Quick Start
+
+```csharp
+using MultiLock;
+using MultiLock.InMemory;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Add semaphore with In-Memory provider (max 5 concurrent holders)
+builder.Services.AddSemaphore<InMemorySemaphoreProvider>(options =>
+{
+    options.SemaphoreName = "api-rate-limiter";
+    options.MaxCount = 5;
+    options.HeartbeatInterval = TimeSpan.FromSeconds(30);
+    options.HeartbeatTimeout = TimeSpan.FromSeconds(90);
+});
+
+var app = builder.Build();
+```
+
+### Using the Semaphore Service
+
+```csharp
+public class RateLimitedApiClient
+{
+    private readonly ISemaphoreService _semaphore;
+    private readonly HttpClient _httpClient;
+
+    public RateLimitedApiClient(ISemaphoreService semaphore, HttpClient httpClient)
+    {
+        _semaphore = semaphore;
+        _httpClient = httpClient;
+    }
+
+    public async Task<string> CallExternalApiAsync(CancellationToken cancellationToken)
+    {
+        // Block until a slot is available (or cancellationToken is triggered)
+        await _semaphore.WaitForSlotAsync(cancellationToken);
+
+        try
+        {
+            // We now hold a slot - make the API call
+            return await _httpClient.GetStringAsync("/api/data", cancellationToken);
+        }
+        finally
+        {
+            // Always release the slot, even if the call throws
+            await _semaphore.ReleaseAsync(cancellationToken);
+        }
+    }
+
+    public async Task<string?> TryCallExternalApiAsync(CancellationToken cancellationToken)
+    {
+        // Try to acquire without blocking; returns false if all slots are taken
+        bool acquired = await _semaphore.TryAcquireAsync(cancellationToken);
+
+        if (!acquired)
+            return null;
+
+        try
+        {
+            return await _httpClient.GetStringAsync("/api/data", cancellationToken);
+        }
+        finally
+        {
+            await _semaphore.ReleaseAsync(cancellationToken);
+        }
+    }
+}
+```
+
+### Monitoring Semaphore Status
+
+```csharp
+// Check current status synchronously via the property
+SemaphoreStatus status = semaphore.CurrentStatus;
+Console.WriteLine($"Holding: {status.IsHolding}");
+Console.WriteLine($"Available: {status.AvailableSlots}/{status.MaxCount}");
+
+// Or fetch the latest state including all holders asynchronously
+SemaphoreInfo? info = await semaphore.GetSemaphoreInfoAsync(cancellationToken);
+if (info != null)
+    Console.WriteLine($"[Async] Active holders: {info.CurrentCount}/{info.MaxCount}");
+
+// Subscribe to status changes
+await foreach (var change in semaphore.GetStatusChangesAsync(cancellationToken))
+{
+    if (change.AcquiredSlot)
+    {
+        Console.WriteLine("Acquired a semaphore slot!");
+    }
+    else if (change.LostSlot)
+    {
+        Console.WriteLine("Lost semaphore slot!");
+    }
+}
+```
+
+### Provider-Specific Configuration
+
+All providers support semaphores with the same API:
+
+```csharp
+// PostgreSQL
+builder.Services.AddPostgreSqlSemaphore(
+    connectionString: "Host=localhost;Database=MyApp;...",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// Redis
+builder.Services.AddRedisSemaphore(
+    connectionString: "localhost:6379",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// SQL Server
+builder.Services.AddSqlServerSemaphore(
+    connectionString: "Server=localhost;Database=MyApp;...",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// Azure Blob Storage
+builder.Services.AddAzureBlobStorageSemaphore(
+    connectionString: "DefaultEndpointsProtocol=https;...",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// Consul
+builder.Services.AddConsulSemaphore(
+    address: "http://localhost:8500",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// ZooKeeper
+builder.Services.AddZooKeeperSemaphore(
+    connectionString: "localhost:2181",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+
+// File System
+builder.Services.AddFileSystemSemaphore(
+    directoryPath: "/var/locks",
+    options => { options.SemaphoreName = "my-semaphore"; options.MaxCount = 10; });
+```
+
+### Semaphore Configuration Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `SemaphoreName` | Unique name for the semaphore | Required |
+| `MaxCount` | Maximum concurrent holders | Required |
+| `HolderId` | Unique identifier for this holder | Auto-generated |
+| `HeartbeatInterval` | How often to send heartbeats | 10 seconds |
+| `HeartbeatTimeout` | Time before a holder is considered dead | 30 seconds |
+| `AcquisitionInterval` | How often to retry acquiring a slot | 5 seconds |
+| `MaxRetryAttempts` | Retry attempts for transient failures | 3 |
+| `RetryBaseDelay` | Base delay between retries | 100ms |
+| `RetryMaxDelay` | Maximum delay between retries | 5 seconds |
+| `AutoStart` | Start acquiring on service start | true |
+| `EnableDetailedLogging` | Enable verbose logging | false |
+
+### Semaphore vs Leader Election
+
+| Feature | Leader Election | Semaphore |
+|---------|-----------------|-----------|
+| Concurrent holders | 1 (exclusive) | N (configurable) |
+| Use case | Single leader tasks | Rate limiting, pooling |
+| Failover | Automatic re-election | Slot becomes available |
+| API | `IsLeader` property | `IsHolding` property |
 
 ## Testing
 

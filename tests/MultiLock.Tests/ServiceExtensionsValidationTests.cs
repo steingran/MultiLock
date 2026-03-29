@@ -198,5 +198,85 @@ public class ServiceExtensionsValidationTests
 
         ILeaderElectionProvider Factory(IServiceProvider sp) => new InMemoryLeaderElectionProvider(sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InMemoryLeaderElectionProvider>>());
     }
+
+    // AddSemaphore tests
+
+    [Fact]
+    public void AddSemaphore_WithNullServices_ShouldThrowArgumentNullException()
+    {
+        IServiceCollection? services = null;
+        Should.Throw<ArgumentNullException>(() => services!.AddSemaphore())
+            .ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSemaphore_WithValidServices_ShouldSucceed()
+    {
+        var services = new ServiceCollection();
+        IServiceCollection result = services.AddSemaphore();
+        result.ShouldBe(services);
+    }
+
+    [Fact]
+    public void AddSemaphore_WithConfigureOptions_ShouldSucceed()
+    {
+        var services = new ServiceCollection();
+        IServiceCollection result = services.AddSemaphore(o => o.SemaphoreName = "test");
+        result.ShouldBe(services);
+    }
+
+    [Fact]
+    public void AddSemaphoreGeneric_WithNullServices_ShouldThrowArgumentNullException()
+    {
+        IServiceCollection? services = null;
+        Should.Throw<ArgumentNullException>(() => services!.AddSemaphore<InMemory.InMemorySemaphoreProvider>())
+            .ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSemaphoreGeneric_WithValidServices_ShouldRegisterProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSemaphore<InMemory.InMemorySemaphoreProvider>(o => o.SemaphoreName = "test-sem");
+
+        ServiceProvider sp = services.BuildServiceProvider();
+        sp.GetService<ISemaphoreProvider>().ShouldNotBeNull();
+        sp.GetService<ISemaphoreService>().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void AddSemaphoreWithFactory_WithNullServices_ShouldThrowArgumentNullException()
+    {
+        IServiceCollection? services = null;
+        Should.Throw<ArgumentNullException>(
+            () => services!.AddSemaphore(sp => new InMemory.InMemorySemaphoreProvider(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InMemory.InMemorySemaphoreProvider>>())))
+            .ParamName.ShouldBe("services");
+    }
+
+    [Fact]
+    public void AddSemaphoreWithFactory_WithNullFactory_ShouldThrowArgumentNullException()
+    {
+        var services = new ServiceCollection();
+        Func<IServiceProvider, ISemaphoreProvider>? factory = null;
+        Should.Throw<ArgumentNullException>(() => services.AddSemaphore(factory!))
+            .ParamName.ShouldBe("providerFactory");
+    }
+
+    [Fact]
+    public void AddSemaphoreWithFactory_WithValidFactory_ShouldRegisterService()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSemaphore(
+            sp => new InMemory.InMemorySemaphoreProvider(
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<InMemory.InMemorySemaphoreProvider>>()),
+            o => o.SemaphoreName = "test-sem");
+
+        ServiceProvider sp2 = services.BuildServiceProvider();
+        sp2.GetService<ISemaphoreProvider>().ShouldNotBeNull();
+        sp2.GetService<ISemaphoreService>().ShouldNotBeNull();
+    }
 }
 

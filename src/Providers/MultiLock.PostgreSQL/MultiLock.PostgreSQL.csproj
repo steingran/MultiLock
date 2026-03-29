@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
     <PackageId>MultiLock.PostgreSQL</PackageId>
-    <Description>PostgreSQL provider for MultiLock - Leader Election framework for distributed systems. This package includes the core MultiLock framework.</Description>
-    <PackageTags>leader-election;distributed-systems;high-availability;failover;postgresql;postgres;database</PackageTags>
+    <Description>PostgreSQL provider for MultiLock - Leader Election and Distributed Semaphores framework for distributed systems. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;semaphore;rate-limiting;postgresql;postgres;database</PackageTags>
   </PropertyGroup>
 
     <ItemGroup>

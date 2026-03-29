@@ -534,7 +534,9 @@ public sealed class ZooKeeperLeaderElectionProvider : Watcher, ILeaderElectionPr
 
             try
             {
-                await connectionCompletionSource.Task.ConfigureAwait(false);
+                // WaitAsync links the TaskCompletionSource to the timeout/caller token so that
+                // cancellation actually propagates; awaiting the Task directly never cancels.
+                await connectionCompletionSource.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
             {
