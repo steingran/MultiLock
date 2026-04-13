@@ -245,7 +245,7 @@ jobs:
 
     - name: Upload packages to GitHub Release
       if: startsWith(github.ref, 'refs/tags/v') && !inputs.dry_run
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: |
           ./artifacts/*.nupkg
