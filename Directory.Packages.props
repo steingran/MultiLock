@@ -17,7 +17,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.7" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.7" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.3.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.7" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.203" PrivateAssets="All" />
     <PackageVersion Include="MinVer" Version="7.0.0" PrivateAssets="All" />
