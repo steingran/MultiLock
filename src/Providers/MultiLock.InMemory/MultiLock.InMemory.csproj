@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
     <PackageId>MultiLock.InMemory</PackageId>
-    <Description>In-Memory provider for MultiLock - Leader Election framework for distributed systems. Ideal for testing and development. This package includes the core MultiLock framework.</Description>
-    <PackageTags>leader-election;distributed-systems;high-availability;failover;in-memory;testing;development</PackageTags>
+    <Description>In-Memory provider for MultiLock - Leader Election and Distributed Semaphores framework for distributed systems. Ideal for testing and development. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;semaphore;rate-limiting;in-memory;testing;development</PackageTags>
   </PropertyGroup>
 
     <ItemGroup>

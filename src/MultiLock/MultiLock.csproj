@@ -2,8 +2,8 @@
 
   <PropertyGroup>
     <PackageId>MultiLock</PackageId>
-    <Description>A comprehensive .NET framework for implementing the Leader Election pattern with support for multiple providers including Azure Blob Storage, SQL Server, PostgreSQL, Redis, File System, In-Memory, Consul, and ZooKeeper.</Description>
-    <PackageTags>leader-election;distributed-systems;high-availability;failover;azure;redis;sql-server;postgresql;consul;zookeeper</PackageTags>
+    <Description>A comprehensive .NET framework for implementing Leader Election and Distributed Semaphores patterns with support for multiple providers including Azure Blob Storage, SQL Server, PostgreSQL, Redis, File System, In-Memory, Consul, and ZooKeeper.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;semaphore;rate-limiting;azure;redis;sql-server;postgresql;consul;zookeeper</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

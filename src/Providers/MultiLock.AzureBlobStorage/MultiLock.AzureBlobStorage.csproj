@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
     <PackageId>MultiLock.AzureBlobStorage</PackageId>
-    <Description>Azure Blob Storage provider for MultiLock - Leader Election framework for distributed systems. This package includes the core MultiLock framework.</Description>
-    <PackageTags>leader-election;distributed-systems;high-availability;failover;azure;blob-storage;cloud</PackageTags>
+    <Description>Azure Blob Storage provider for MultiLock - Leader Election and Distributed Semaphores framework for distributed systems. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;semaphore;rate-limiting;azure;blob-storage;cloud</PackageTags>
   </PropertyGroup>
 
     <ItemGroup>
