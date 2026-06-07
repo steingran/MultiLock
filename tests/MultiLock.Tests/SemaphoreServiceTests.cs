@@ -466,6 +466,74 @@ public class SemaphoreServiceTests : IAsyncLifetime
             Times.Exactly(3));
     }
 
+    [Fact]
+    public async Task AutoStart_HeartbeatTimerFires_KeepsSlotHeld()
+    {
+        // Arrange: short heartbeat interval so the heartbeat timer callback actually fires.
+        var options = new SemaphoreOptions
+        {
+            SemaphoreName = "heartbeat-semaphore",
+            MaxCount = 1,
+            AutoStart = true,
+            HeartbeatInterval = TimeSpan.FromMilliseconds(50),
+            HeartbeatTimeout = TimeSpan.FromMilliseconds(250),
+            AcquisitionInterval = TimeSpan.FromMilliseconds(50),
+            EnableDetailedLogging = true
+        };
+        service = new SemaphoreService(provider, Options.Create(options), loggerFactory.CreateLogger<SemaphoreService>());
+
+        // Act: AutoStart acquires immediately, then the heartbeat timer renews the slot repeatedly.
+        await service.StartAsync();
+        await WaitUntilAsync(() => service.IsHolding, TimeSpan.FromSeconds(5));
+
+        // Assert: after several heartbeat intervals the slot is still held (renewals succeeded).
+        await Task.Delay(250);
+        service.IsHolding.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AutoStart_WhenInitiallyFull_AcquisitionTimerAcquiresOnceSlotFrees()
+    {
+        // Arrange: occupy the only slot, then start an auto-starting service that must wait.
+        const string semaphore = "acquisition-semaphore";
+        var meta = new Dictionary<string, string>();
+        await provider.TryAcquireAsync(semaphore, "other-holder", 1, meta, TimeSpan.FromMinutes(5));
+
+        var options = new SemaphoreOptions
+        {
+            SemaphoreName = semaphore,
+            MaxCount = 1,
+            AutoStart = true,
+            HeartbeatInterval = TimeSpan.FromMilliseconds(50),
+            HeartbeatTimeout = TimeSpan.FromMilliseconds(250),
+            AcquisitionInterval = TimeSpan.FromMilliseconds(50)
+        };
+        service = new SemaphoreService(provider, Options.Create(options), loggerFactory.CreateLogger<SemaphoreService>());
+
+        // Act: the acquisition timer keeps retrying while the semaphore is full.
+        await service.StartAsync();
+        await Task.Delay(150);
+        service.IsHolding.ShouldBeFalse();
+
+        // Free the slot; the acquisition timer should pick it up on a subsequent tick.
+        await provider.ReleaseAsync(semaphore, "other-holder");
+
+        // Assert
+        await WaitUntilAsync(() => service.IsHolding, TimeSpan.FromSeconds(5));
+        service.IsHolding.ShouldBeTrue();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout)
+    {
+        using var cts = new CancellationTokenSource(timeout);
+        while (!condition())
+        {
+            if (cts.IsCancellationRequested)
+                throw new TimeoutException("Condition was not met within the allotted time.");
+            await Task.Delay(20);
+        }
+    }
+
     private SemaphoreService CreateService(string semaphoreName, int maxCount) =>
         new(provider, Options.Create(new SemaphoreOptions
         {
