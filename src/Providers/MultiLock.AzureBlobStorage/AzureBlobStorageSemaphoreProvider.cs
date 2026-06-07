@@ -83,7 +83,9 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
                             holderId, semaphoreName);
                         return true;
                     }
-                    continue; // Retry on conflict
+
+                    await DelayBeforeRetryAsync(attempt, cancellationToken); // Retry on conflict
+                    continue;
                 }
 
                 // Check if there's room
@@ -109,9 +111,12 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
                         holderId, semaphoreName);
                     return true;
                 }
-                // Retry on conflict
+
+                await DelayBeforeRetryAsync(attempt, cancellationToken); // Retry on conflict
             }
 
+            // Exhausting the retry budget under contention is not an error: report the slot as
+            // unacquired and let the caller retry on its normal acquisition interval.
             logger.LogWarning("Failed to acquire slot for holder {HolderId} in semaphore {SemaphoreName} after {MaxRetries} attempts",
                 holderId, semaphoreName, options.MaxRetryAttempts);
             return false;
@@ -160,16 +165,22 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
                         holderId, semaphoreName);
                     return;
                 }
+
+                await DelayBeforeRetryAsync(attempt, cancellationToken); // Retry on conflict
             }
 
-            logger.LogWarning("Failed to release slot for holder {HolderId} in semaphore {SemaphoreName} after {MaxRetries} attempts due to repeated ETag conflicts",
-                holderId, semaphoreName, options.MaxRetryAttempts);
+            // Unlike acquire, a failed release must not be swallowed: the slot would otherwise
+            // linger until its heartbeat times out, blocking other holders. Surface the failure so
+            // the caller (and the service's retry policy) can react.
+            throw new SemaphoreProviderException(
+                $"Failed to release semaphore slot for holder '{holderId}' in semaphore '{semaphoreName}' " +
+                $"after {options.MaxRetryAttempts} attempts due to repeated ETag conflicts.");
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not SemaphoreException)
         {
             logger.LogError(ex, "Error releasing slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -215,6 +226,8 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
                         holderId, semaphoreName);
                     return true;
                 }
+
+                await DelayBeforeRetryAsync(attempt, cancellationToken); // Retry on conflict
             }
 
             return false;
@@ -377,6 +390,17 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
         }
     }
 
+    // Exponential backoff with jitter between optimistic-concurrency (ETag) conflict retries.
+    // Without a delay, contending callers re-read and re-write in a tight loop, amplifying
+    // contention and burning the (small) retry budget against each other.
+    private static Task DelayBeforeRetryAsync(int attempt, CancellationToken cancellationToken)
+    {
+        double baseMs = 25 * Math.Pow(2, attempt);
+        double jitterMs = Random.Shared.NextDouble() * 25;
+        double cappedMs = Math.Min(baseMs + jitterMs, 1000);
+        return Task.Delay(TimeSpan.FromMilliseconds(cappedMs), cancellationToken);
+    }
+
     private async Task<BlobClient> GetBlobClientAsync(string semaphoreName, CancellationToken cancellationToken)
     {
         BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(options.ContainerName);
@@ -406,6 +430,9 @@ public sealed class AzureBlobStorageSemaphoreProvider : ISemaphoreProvider
     {
         Response<BlobDownloadResult> response = await blobClient.DownloadContentAsync(cancellationToken: cancellationToken);
         SemaphoreData? data = JsonSerializer.Deserialize<SemaphoreData>(response.Value.Content.ToString());
+        if (data == null)
+            logger.LogWarning("Semaphore blob {BlobName} contained content that could not be deserialized; treating it as empty",
+                blobClient.Name);
         return (data ?? new SemaphoreData { Holders = [] }, response.Value.Details.ETag);
     }
 

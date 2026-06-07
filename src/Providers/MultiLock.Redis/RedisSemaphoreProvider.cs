@@ -291,6 +291,11 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
                         acquiredAt = holderData.AcquiredAt;
                         metadata = holderData.Metadata;
                     }
+                    else
+                    {
+                        logger.LogWarning("Holder data for {HolderId} in semaphore {SemaphoreName} could not be deserialized; falling back to heartbeat timestamp",
+                            holderId, semaphoreName);
+                    }
                 }
 
                 holders.Add(new SemaphoreHolder(holderId, acquiredAt, lastHeartbeat, metadata));

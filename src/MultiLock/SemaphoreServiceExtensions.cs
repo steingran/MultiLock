@@ -15,6 +15,13 @@ public static class SemaphoreServiceExtensions
     /// <param name="configureOptions">An action to configure the semaphore options.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="services"/> is null.</exception>
+    /// <remarks>
+    /// Registers <see cref="ISemaphoreService"/> as a single shared singleton (also surfaced as a
+    /// hosted service), so a container supports <b>one semaphore</b> — the one named by
+    /// <see cref="SemaphoreOptions.SemaphoreName"/>. To coordinate several distinct semaphores from
+    /// one application, use separate hosts/containers or resolve providers directly; there is no
+    /// keyed/named-semaphore registration.
+    /// </remarks>
     public static IServiceCollection AddSemaphore(
         this IServiceCollection services,
         Action<SemaphoreOptions>? configureOptions = null)

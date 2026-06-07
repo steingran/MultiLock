@@ -341,6 +341,44 @@ public class SemaphoreServiceTests : IAsyncLifetime
         service.IsHolding.ShouldBeFalse();
     }
 
+    [Fact]
+    public async Task AcquireScopeAsync_WhenSlotAvailable_ReturnsScopeAndReleasesOnDispose()
+    {
+        // Arrange
+        service = CreateService("test-semaphore", 1);
+
+        // Act
+        SemaphoreAcquisition? scope = await service.AcquireScopeAsync();
+
+        // Assert: the scope reflects a held slot.
+        scope.ShouldNotBeNull();
+        scope!.HolderId.ShouldBe(service.HolderId);
+        service.IsHolding.ShouldBeTrue();
+        (await provider.GetCurrentCountAsync("test-semaphore", TimeSpan.FromSeconds(30))).ShouldBe(1);
+
+        // Disposing the scope releases through the service.
+        await scope.DisposeAsync();
+
+        service.IsHolding.ShouldBeFalse();
+        (await provider.GetCurrentCountAsync("test-semaphore", TimeSpan.FromSeconds(30))).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task AcquireScopeAsync_WhenSemaphoreFull_ReturnsNull()
+    {
+        // Arrange
+        const int maxCount = 1;
+        service = CreateService("test-semaphore", maxCount);
+        await provider.TryAcquireAsync("test-semaphore", "other-1", maxCount, new Dictionary<string, string>(), TimeSpan.FromMinutes(5));
+
+        // Act
+        SemaphoreAcquisition? scope = await service.AcquireScopeAsync();
+
+        // Assert
+        scope.ShouldBeNull();
+        service.IsHolding.ShouldBeFalse();
+    }
+
     private SemaphoreService CreateService(string semaphoreName, int maxCount) =>
         new(provider, Options.Create(new SemaphoreOptions
         {

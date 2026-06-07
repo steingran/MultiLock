@@ -12,6 +12,18 @@ namespace MultiLock.ZooKeeper;
 /// ZooKeeper implementation of the semaphore provider.
 /// Uses ZooKeeper ephemeral sequential nodes for distributed counting semaphore.
 /// </summary>
+/// <remarks>
+/// Expiry semantics differ from the other providers. A slot is held by an <em>ephemeral</em> znode
+/// that lives as long as the holder's ZooKeeper session, so liveness is governed by the ZooKeeper
+/// session timeout rather than by the <c>slotTimeout</c> heartbeat window: the <c>slotTimeout</c>
+/// argument is not used to expire slots, and <see cref="GetCurrentCountAsync"/> counts live znodes
+/// regardless of last-heartbeat age. A holder that stops calling <see cref="UpdateHeartbeatAsync"/>
+/// but keeps its session alive therefore retains its slot until the session ends, at which point
+/// ZooKeeper removes the ephemeral node automatically and frees the slot. If the session expires,
+/// the slot is lost immediately; the next <see cref="UpdateHeartbeatAsync"/> call detects this
+/// (its node no longer exists) and reports the slot as lost so the service re-acquires.
+/// Tune the configured session timeout to match the desired failure-detection window.
+/// </remarks>
 public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IAsyncDisposable
 {
     private readonly ZooKeeperSemaphoreOptions options;
@@ -221,6 +233,16 @@ public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IA
             HandleSessionExpired(ex, "updating heartbeat", holderId, semaphoreName);
             return false;
         }
+        catch (Exception ex) when (ex is KeeperException.NoNodeException or KeeperException.BadVersionException)
+        {
+            // The node was removed (e.g. session lapsed and the ephemeral node was reaped, or it was
+            // deleted out of band) or updated concurrently: the slot is lost. Drop stale tracking and
+            // report the heartbeat as failed so the service re-acquires, per the provider contract.
+            RemoveNode(semaphoreName, holderId);
+            logger.LogWarning("Heartbeat for holder {HolderId} in semaphore {SemaphoreName} found no live node - slot lost",
+                holderId, semaphoreName);
+            return false;
+        }
         catch (Exception ex) when (ex is not SemaphoreException)
         {
             logger.LogError(ex, "Error updating heartbeat for holder {HolderId} in semaphore {SemaphoreName}",
@@ -403,6 +425,7 @@ public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IA
 
     /// <summary>
     /// Synchronously disposes the ZooKeeper semaphore provider.
+    /// </summary>
     /// <remarks>
     /// Prefer <see cref="DisposeAsync"/> in async contexts. This synchronous path blocks the
     /// calling thread and should not be used when a synchronization context is active.

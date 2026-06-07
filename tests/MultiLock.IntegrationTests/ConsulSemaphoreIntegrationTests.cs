@@ -155,6 +155,48 @@ public class ConsulSemaphoreIntegrationTests : IAsyncLifetime
         isHoldingAfter.ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task TryAcquireAsync_ConcurrentAcquirers_NeverExceedsMaxCount()
+    {
+        // Arrange: many independent providers (simulating separate processes) race to acquire the
+        // same semaphore whose capacity is far smaller than the number of contenders. This exercises
+        // the optimistic pre-check / post-check rollback path that bounds the holder count.
+        const int maxCount = 3;
+        const int concurrency = 12;
+        const string semaphore = "concurrency-semaphore";
+        var metadata = new Dictionary<string, string>();
+        var options = CreateOptions();
+
+        var providers = Enumerable
+            .Range(0, concurrency)
+            .Select(_ => new ConsulSemaphoreProvider(Options.Create(options), logger))
+            .ToList();
+
+        try
+        {
+            // Act: fire all acquisitions concurrently.
+            bool[] results = await Task.WhenAll(
+                providers.Select((p, i) =>
+                    p.TryAcquireAsync(semaphore, $"holder-{i}", maxCount, metadata, TimeSpan.FromMinutes(5))));
+
+            int successes = results.Count(acquired => acquired);
+
+            // Assert: the safety invariant — no more than maxCount callers may hold a slot, and the
+            // authoritative live count must agree with the number of successful acquisitions (every
+            // rolled-back acquisition has already destroyed its session/key before returning).
+            successes.ShouldBeLessThanOrEqualTo(maxCount);
+
+            int count = await providers[0].GetCurrentCountAsync(semaphore, TimeSpan.FromMinutes(5));
+            count.ShouldBeLessThanOrEqualTo(maxCount);
+            count.ShouldBe(successes, "the live holder count should match the number of successful acquisitions");
+        }
+        finally
+        {
+            foreach (ConsulSemaphoreProvider provider in providers)
+                await provider.DisposeAsync();
+        }
+    }
+
     private ConsulSemaphoreOptions CreateOptions() => new()
     {
         Address = Address,
