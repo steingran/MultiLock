@@ -16,9 +16,17 @@ public sealed record SemaphoreStatus(
     DateTimeOffset? NextAcquisitionAttempt)
 {
     /// <summary>
-    /// Gets the number of available slots in the semaphore.
+    /// Gets a value indicating whether this status reflects an actual observation from the provider.
+    /// This is <c>false</c> only for the initial <see cref="Unknown"/> state, before the first
+    /// provider read. While unknown, availability is reported conservatively as none.
     /// </summary>
-    public int AvailableSlots => Math.Max(0, MaxCount - CurrentCount);
+    public bool HasInformation { get; init; } = true;
+
+    /// <summary>
+    /// Gets the number of available slots in the semaphore. Returns 0 while the status is
+    /// <see cref="Unknown"/> so callers don't act on unobserved capacity.
+    /// </summary>
+    public int AvailableSlots => HasInformation ? Math.Max(0, MaxCount - CurrentCount) : 0;
 
     /// <summary>
     /// Gets a value indicating whether the semaphore has available slots.
@@ -50,6 +58,6 @@ public sealed record SemaphoreStatus(
     /// <param name="maxCount">The maximum number of holders.</param>
     /// <returns>A new <see cref="SemaphoreStatus"/> instance.</returns>
     public static SemaphoreStatus Unknown(int maxCount) =>
-        new(false, 0, maxCount, null, null);
+        new(false, 0, maxCount, null, null) { HasInformation = false };
 }
 

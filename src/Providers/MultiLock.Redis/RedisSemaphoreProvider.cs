@@ -123,7 +123,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
 
             return acquired;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error acquiring slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -158,7 +158,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
             logger.LogInformation("Released slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error releasing slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -217,7 +217,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
 
             return success;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error updating heartbeat for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -244,7 +244,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
             long count = await database.SortedSetLengthAsync(holdersKey, minScore, double.PositiveInfinity);
             return (int)count;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error getting current count for semaphore {SemaphoreName}", semaphoreName);
             throw new SemaphoreProviderException("Failed to get current count", ex);
@@ -303,7 +303,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
 
             return holders;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error getting holders for semaphore {SemaphoreName}", semaphoreName);
             throw new SemaphoreProviderException("Failed to get holders", ex);
@@ -328,7 +328,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
             double? score = await database.SortedSetScoreAsync(holdersKey, holderId);
             return score.HasValue;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error checking if holder {HolderId} is holding semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -348,7 +348,7 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
             await database.PingAsync();
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Health check failed for Redis semaphore provider");
             return false;

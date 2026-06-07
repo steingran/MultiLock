@@ -82,11 +82,15 @@ public sealed class SemaphoreOptions
     /// <exception cref="ArgumentException">Thrown when options are invalid.</exception>
     public void Validate()
     {
-        if (string.IsNullOrWhiteSpace(SemaphoreName))
-            throw new ArgumentException("Semaphore name cannot be null or empty.", nameof(SemaphoreName));
+        // Reuse the shared validators so options validation stays consistent with the per-call
+        // validation performed by every provider (character rules, length limits, metadata bounds).
+        ParameterValidation.ValidateSemaphoreName(SemaphoreName, nameof(SemaphoreName));
+        ParameterValidation.ValidateMaxCount(MaxCount, nameof(MaxCount));
 
-        if (MaxCount < 1)
-            throw new ArgumentException("Max count must be at least 1.", nameof(MaxCount));
+        if (HolderId != null)
+            ParameterValidation.ValidateHolderId(HolderId, nameof(HolderId));
+
+        ParameterValidation.ValidateMetadata(Metadata, nameof(Metadata));
 
         if (HeartbeatInterval <= TimeSpan.Zero)
             throw new ArgumentException("Heartbeat interval must be positive.", nameof(HeartbeatInterval));

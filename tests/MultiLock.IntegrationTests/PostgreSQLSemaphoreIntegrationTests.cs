@@ -94,8 +94,8 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         const int maxCount = 2;
 
         // Fill the semaphore
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", maxCount, metadata, TimeSpan.FromMinutes(5));
-        await provider.TryAcquireAsync(semaphoreName, "holder-2", maxCount, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", maxCount, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
+        (await provider.TryAcquireAsync(semaphoreName, "holder-2", maxCount, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         // Act
         bool acquired = await provider.TryAcquireAsync(semaphoreName, "holder-3", maxCount, metadata, TimeSpan.FromMinutes(5));
@@ -112,7 +112,7 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         using var provider = new PostgreSqlSemaphoreProvider(Options.Create(options), logger);
         var metadata = new Dictionary<string, string> { { "key", "value" } };
 
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         // Act - try to acquire again with same holder
         bool acquired = await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5));
@@ -132,7 +132,7 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         var metadata = new Dictionary<string, string>();
         const int maxCount = 1;
 
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", maxCount, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", maxCount, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         // Act
         await provider.ReleaseAsync(semaphoreName, "holder-1");
@@ -150,7 +150,7 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         using var provider = new PostgreSqlSemaphoreProvider(Options.Create(options), logger);
         var metadata = new Dictionary<string, string> { { "key", "value" } };
 
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         var updatedMetadata = new Dictionary<string, string> { { "key", "updated-value" } };
 
@@ -184,8 +184,8 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         using var provider = new PostgreSqlSemaphoreProvider(Options.Create(options), logger);
         var metadata = new Dictionary<string, string>();
 
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", 5, metadata, TimeSpan.FromMinutes(5));
-        await provider.TryAcquireAsync(semaphoreName, "holder-2", 5, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", 5, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
+        (await provider.TryAcquireAsync(semaphoreName, "holder-2", 5, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         // Act
         int count = await provider.GetCurrentCountAsync(semaphoreName, TimeSpan.FromMinutes(5));
@@ -203,8 +203,8 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
         var metadata1 = new Dictionary<string, string> { { "holder", "1" } };
         var metadata2 = new Dictionary<string, string> { { "holder", "2" } };
 
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", 5, metadata1, TimeSpan.FromMinutes(5));
-        await provider.TryAcquireAsync(semaphoreName, "holder-2", 5, metadata2, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", 5, metadata1, TimeSpan.FromMinutes(5))).ShouldBeTrue();
+        (await provider.TryAcquireAsync(semaphoreName, "holder-2", 5, metadata2, TimeSpan.FromMinutes(5))).ShouldBeTrue();
 
         // Act
         IReadOnlyList<SemaphoreHolder> holders = await provider.GetHoldersAsync(semaphoreName);
@@ -225,7 +225,7 @@ public class PostgreSqlSemaphoreIntegrationTests : IAsyncLifetime
 
         // Act
         bool isHoldingBefore = await provider.IsHoldingAsync(semaphoreName, "holder-1");
-        await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(semaphoreName, "holder-1", 3, metadata, TimeSpan.FromMinutes(5))).ShouldBeTrue();
         bool isHoldingAfter = await provider.IsHoldingAsync(semaphoreName, "holder-1");
 
         // Assert

@@ -1,9 +1,11 @@
-﻿namespace MultiLock.Redis;
+﻿using System.Text.RegularExpressions;
+
+namespace MultiLock.Redis;
 
 /// <summary>
 /// Configuration options for the Redis semaphore provider.
 /// </summary>
-public sealed class RedisSemaphoreOptions
+public sealed partial class RedisSemaphoreOptions
 {
     /// <summary>
     /// Gets or sets the Redis connection string.
@@ -34,8 +36,18 @@ public sealed class RedisSemaphoreOptions
         if (string.IsNullOrWhiteSpace(KeyPrefix))
             throw new ArgumentException("Key prefix cannot be null or empty.", nameof(KeyPrefix));
 
+        // Restrict the key prefix to safe characters (alphanumeric plus ':', '-', '_') for
+        // consistency with the other providers and to avoid surprising Redis key patterns.
+        if (!KeyPrefixRegex().IsMatch(KeyPrefix))
+            throw new ArgumentException(
+                "Key prefix may contain only alphanumeric characters, colons, hyphens, and underscores.",
+                nameof(KeyPrefix));
+
         if (Database < 0)
             throw new ArgumentException("Database number cannot be negative.", nameof(Database));
     }
+
+    [GeneratedRegex(@"^[a-zA-Z0-9:_-]+$", RegexOptions.Compiled)]
+    private static partial Regex KeyPrefixRegex();
 }
 

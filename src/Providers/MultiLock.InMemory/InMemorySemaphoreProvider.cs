@@ -42,6 +42,11 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            // Re-check inside the lock: a caller can pass the pre-lock ThrowIfDisposed() and then
+            // block here while Dispose() runs (Dispose() takes the same lock). Without this check it
+            // would proceed to repopulate state on an already-disposed provider.
+            ThrowIfDisposed();
+
             DateTimeOffset now = DateTimeOffset.UtcNow;
             DateTimeOffset expiryTime = now.Subtract(slotTimeout);
 
@@ -99,6 +104,8 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            ThrowIfDisposed();
+
             if (!semaphores.TryGetValue(semaphoreName, out Dictionary<string, SemaphoreSlotRecord>? holders))
                 return Task.CompletedTask;
 
@@ -126,6 +133,8 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            ThrowIfDisposed();
+
             if (!semaphores.TryGetValue(semaphoreName, out Dictionary<string, SemaphoreSlotRecord>? holders))
             {
                 logger.LogWarning("Heartbeat update failed for holder {HolderId} in semaphore {SemaphoreName} - semaphore not found",
@@ -167,6 +176,8 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            ThrowIfDisposed();
+
             if (!semaphores.TryGetValue(semaphoreName, out Dictionary<string, SemaphoreSlotRecord>? holders))
                 return Task.FromResult(0);
 
@@ -186,6 +197,8 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            ThrowIfDisposed();
+
             if (!semaphores.TryGetValue(semaphoreName, out Dictionary<string, SemaphoreSlotRecord>? holders))
                 return Task.FromResult<IReadOnlyList<SemaphoreHolder>>(Array.Empty<SemaphoreHolder>());
 
@@ -209,6 +222,8 @@ public sealed class InMemorySemaphoreProvider : ISemaphoreProvider
 
         lock (@lock)
         {
+            ThrowIfDisposed();
+
             if (!semaphores.TryGetValue(semaphoreName, out Dictionary<string, SemaphoreSlotRecord>? holders))
                 return Task.FromResult(false);
 

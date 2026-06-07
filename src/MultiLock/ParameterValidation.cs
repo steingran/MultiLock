@@ -8,7 +8,12 @@ namespace MultiLock;
 public static partial class ParameterValidation
 {
     private const int maxIdentifierLength = 255;
-    private const int maxSqlIdentifierLength = 128;
+
+    /// <summary>
+    /// Default maximum SQL identifier length (SQL Server's limit). Providers with shorter limits
+    /// (e.g. PostgreSQL's 63) should pass their own value to <see cref="ValidateSqlIdentifier"/>.
+    /// </summary>
+    public const int DefaultSqlIdentifierMaxLength = 128;
     private const int maxMetadataKeyLength = 255;
     private const int maxMetadataValueLength = 4000;
     private const int maxMetadataCount = 100;
@@ -173,15 +178,20 @@ public static partial class ParameterValidation
     /// </summary>
     /// <param name="value">The value to validate.</param>
     /// <param name="paramName">The parameter name for error messages.</param>
+    /// <param name="maxLength">
+    /// The maximum permitted identifier length. Defaults to <see cref="DefaultSqlIdentifierMaxLength"/>
+    /// (SQL Server). Callers should pass the limit for their backend (e.g. 63 for PostgreSQL) so that
+    /// distinct long names cannot collide after server-side truncation.
+    /// </param>
     /// <exception cref="ArgumentException">Thrown when the value is not a safe SQL identifier.</exception>
-    public static void ValidateSqlIdentifier(string value, string paramName)
+    public static void ValidateSqlIdentifier(string value, string paramName, int maxLength = DefaultSqlIdentifierMaxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
             throw new ArgumentException("SQL identifier cannot be null, empty, or whitespace.", paramName);
 
-        if (value.Length > maxSqlIdentifierLength)
+        if (value.Length > maxLength)
             throw new ArgumentException(
-                $"SQL identifier cannot exceed {maxSqlIdentifierLength} characters.", paramName);
+                $"SQL identifier cannot exceed {maxLength} characters.", paramName);
 
         if (!IsSafeSqlIdentifier(value))
             throw new ArgumentException(
