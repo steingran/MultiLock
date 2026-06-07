@@ -129,6 +129,17 @@ public sealed class SemaphoreService : BackgroundService, ISemaphoreService
 
             broadcastChannel.Writer.TryComplete();
             await broadcastTask.WaitAsync(cancellationToken);
+
+            // Complete the per-subscriber channels too. Waiters in WaitForSlotAsync /
+            // GetStatusChangesAsync block on their own channel, not on the broadcast reader, so
+            // completing only the broadcast channel would leave them hanging until DisposeAsync.
+            // Each enumerator removes itself from the list in its finally block once completed.
+            lock (subscriberLock)
+            {
+                foreach (Channel<SemaphoreChangedEventArgs> channel in subscriberChannels)
+                    channel.Writer.TryComplete();
+            }
+
             await cancellationTokenSource.CancelAsync();
 
             await DisposeTimersAsync();

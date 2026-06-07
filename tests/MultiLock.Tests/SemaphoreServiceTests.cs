@@ -96,7 +96,7 @@ public class SemaphoreServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task HolderId_ShouldBeSetFromOptions()
+    public void HolderId_ShouldBeSetFromOptions()
     {
         // Arrange
         const string expectedHolderId = "custom-holder-id";
@@ -114,7 +114,7 @@ public class SemaphoreServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SemaphoreName_ShouldBeSetFromOptions()
+    public void SemaphoreName_ShouldBeSetFromOptions()
     {
         // Arrange
         const string expectedName = "my-semaphore";
@@ -125,7 +125,7 @@ public class SemaphoreServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task MaxCount_ShouldBeSetFromOptions()
+    public void MaxCount_ShouldBeSetFromOptions()
     {
         // Arrange
         const int expectedMaxCount = 5;
@@ -379,6 +379,45 @@ public class SemaphoreServiceTests : IAsyncLifetime
         // Assert
         scope.ShouldBeNull();
         service.IsHolding.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task StopAsync_ShouldCompleteActiveStatusEnumerations()
+    {
+        // A GetStatusChangesAsync consumer blocks on its own subscriber channel; StopAsync must
+        // complete it so the enumeration ends rather than hanging until disposal.
+        service = CreateService("stop-semaphore", 1);
+
+        Task enumerationTask = Task.Run(async () =>
+        {
+            await foreach (SemaphoreChangedEventArgs _ in service.GetStatusChangesAsync())
+            {
+                // drain
+            }
+        });
+
+        await Task.Delay(100); // let the enumerator register its subscriber channel
+        await service.StopAsync();
+
+        // Completes promptly once StopAsync completes the subscriber channel.
+        await enumerationTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task StopAsync_ShouldUnblockWaitForSlotWaiter()
+    {
+        // Occupy the only slot so the (manual) service cannot acquire and WaitForSlotAsync blocks.
+        service = CreateService("stop-semaphore-2", 1);
+        await provider.TryAcquireAsync("stop-semaphore-2", "other-holder", 1, new Dictionary<string, string>(), TimeSpan.FromMinutes(5));
+
+        Task waitTask = service.WaitForSlotAsync();
+        await Task.Delay(100);
+
+        await service.StopAsync();
+
+        // The waiter is released (the channel completes without an acquisition) and surfaces a stop
+        // rather than hanging indefinitely.
+        await Should.ThrowAsync<ObjectDisposedException>(() => waitTask.WaitAsync(TimeSpan.FromSeconds(5)));
     }
 
     [Fact]

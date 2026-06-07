@@ -1,9 +1,11 @@
-﻿namespace MultiLock.AzureBlobStorage;
+﻿using System.Text.RegularExpressions;
+
+namespace MultiLock.AzureBlobStorage;
 
 /// <summary>
 /// Configuration options for the Azure Blob Storage semaphore provider.
 /// </summary>
-public sealed class AzureBlobStorageSemaphoreOptions
+public sealed partial class AzureBlobStorageSemaphoreOptions
 {
     /// <summary>
     /// Gets or sets the Azure Storage connection string.
@@ -40,8 +42,20 @@ public sealed class AzureBlobStorageSemaphoreOptions
         if (string.IsNullOrWhiteSpace(ContainerName))
             throw new ArgumentException("Container name cannot be null or empty.", nameof(ContainerName));
 
+        // Validate the container name against Azure's rules up front for a clearer error than the
+        // SDK's runtime failure: 3-63 chars, lowercase letters/digits/hyphens, must start and end
+        // with a letter or digit, and no consecutive hyphens.
+        if (ContainerName.Length is < 3 or > 63 || !ContainerNameRegex().IsMatch(ContainerName))
+            throw new ArgumentException(
+                "Container name must be 3-63 characters, contain only lowercase letters, digits, and hyphens, " +
+                "start and end with a letter or digit, and not contain consecutive hyphens.",
+                nameof(ContainerName));
+
         if (MaxRetryAttempts < 1)
             throw new ArgumentException("Max retry attempts must be at least 1.", nameof(MaxRetryAttempts));
     }
+
+    [GeneratedRegex("^[a-z0-9]+(-[a-z0-9]+)*$", RegexOptions.Compiled)]
+    private static partial Regex ContainerNameRegex();
 }
 

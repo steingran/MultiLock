@@ -32,9 +32,11 @@ public class SemaphoreConcurrencyTests : IDisposable
         var metadata = new Dictionary<string, string>();
         var slotTimeout = TimeSpan.FromMinutes(5);
 
-        // Act - try to acquire from many holders concurrently
+        // Act - try to acquire from many holders concurrently. The provider methods complete
+        // synchronously under a lock, so wrap each call in Task.Run to dispatch it onto the thread
+        // pool and create genuine concurrent contention rather than serial execution.
         var tasks = Enumerable.Range(0, totalHolders)
-            .Select(i => provider.TryAcquireAsync(semaphoreName, $"holder-{i}", maxCount, metadata, slotTimeout))
+            .Select(i => Task.Run(() => provider.TryAcquireAsync(semaphoreName, $"holder-{i}", maxCount, metadata, slotTimeout)))
             .ToList();
 
         bool[] results = await Task.WhenAll(tasks);
@@ -89,7 +91,7 @@ public class SemaphoreConcurrencyTests : IDisposable
 
         // Act - read count from many threads concurrently
         var tasks = Enumerable.Range(0, 100)
-            .Select(_ => provider.GetCurrentCountAsync(semaphoreName, slotTimeout))
+            .Select(_ => Task.Run(() => provider.GetCurrentCountAsync(semaphoreName, slotTimeout)))
             .ToList();
 
         int[] counts = await Task.WhenAll(tasks);
@@ -111,7 +113,7 @@ public class SemaphoreConcurrencyTests : IDisposable
 
         // Act - check holding status from many threads concurrently
         var tasks = Enumerable.Range(0, 100)
-            .Select(_ => provider.IsHoldingAsync(semaphoreName, "holder-1"))
+            .Select(_ => Task.Run(() => provider.IsHoldingAsync(semaphoreName, "holder-1")))
             .ToList();
 
         bool[] results = await Task.WhenAll(tasks);
@@ -134,7 +136,7 @@ public class SemaphoreConcurrencyTests : IDisposable
 
         // Act - get holders from many threads concurrently
         var tasks = Enumerable.Range(0, 100)
-            .Select(_ => provider.GetHoldersAsync(semaphoreName))
+            .Select(_ => Task.Run(() => provider.GetHoldersAsync(semaphoreName)))
             .ToList();
 
         var results = await Task.WhenAll(tasks);
@@ -154,19 +156,32 @@ public class SemaphoreConcurrencyTests : IDisposable
         var slotTimeout = TimeSpan.FromMinutes(5);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-        // Act - rapid acquire/release cycles from multiple holders
-        var tasks = Enumerable.Range(0, 4).Select(async holderIndex =>
+        // Act - rapid acquire/release cycles from multiple holders, each on its own thread.
+        var tasks = Enumerable.Range(0, 4).Select(holderIndex => Task.Run(async () =>
         {
             string holderId = $"holder-{holderIndex}";
+            int acquiredCount = 0;
             for (int i = 0; i < cycles && !cts.Token.IsCancellationRequested; i++)
             {
-                await provider.TryAcquireAsync(semaphoreName, holderId, maxCount, metadata, slotTimeout, cts.Token);
-                await provider.ReleaseAsync(semaphoreName, holderId, cts.Token);
+                // Only release when the acquire actually succeeded; releasing unconditionally would
+                // let the test pass even if every acquire failed.
+                bool acquired = await provider.TryAcquireAsync(semaphoreName, holderId, maxCount, metadata, slotTimeout, cts.Token);
+                if (acquired)
+                {
+                    acquiredCount++;
+                    await provider.ReleaseAsync(semaphoreName, holderId, cts.Token);
+                }
             }
-        }).ToList();
+            return acquiredCount;
+        })).ToList();
 
-        // Assert - should complete without deadlock
-        await Task.WhenAll(tasks);
+        // Assert - completes without deadlock and makes real forward progress.
+        int[] acquiredPerHolder = await Task.WhenAll(tasks);
+        acquiredPerHolder.Sum().ShouldBeGreaterThan(0, "holders should successfully acquire the semaphore across the cycles");
+
+        // The semaphore should be empty once every holder has released.
+        int finalCount = await provider.GetCurrentCountAsync(semaphoreName, slotTimeout);
+        finalCount.ShouldBe(0);
     }
 }
 

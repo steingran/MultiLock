@@ -35,6 +35,19 @@ public class ProviderOptionsValidationTests
     public void RedisOptions_NegativeDatabase_Throws() =>
         Should.Throw<ArgumentException>(() => new RedisSemaphoreOptions { Database = -1 }.Validate());
 
+    [Theory]
+    [InlineData("bad prefix")]      // space not allowed
+    [InlineData("bad!")]            // punctuation not allowed
+    [InlineData("a/b")]             // slash not allowed
+    public void RedisOptions_InvalidKeyPrefix_Throws(string keyPrefix) =>
+        Should.Throw<ArgumentException>(() => new RedisSemaphoreOptions { KeyPrefix = keyPrefix }.Validate());
+
+    [Theory]
+    [InlineData("semaphore")]
+    [InlineData("ml:locks-1_test")]
+    public void RedisOptions_ValidKeyPrefix_DoesNotThrow(string keyPrefix) =>
+        Should.NotThrow(() => new RedisSemaphoreOptions { KeyPrefix = keyPrefix }.Validate());
+
     // ---- Azure Blob Storage ----
 
     [Fact]
@@ -59,6 +72,21 @@ public class ProviderOptionsValidationTests
         {
             ConnectionString = "UseDevelopmentStorage=true",
             MaxRetryAttempts = 0
+        }.Validate());
+
+    [Theory]
+    [InlineData("ab")]                // too short (< 3)
+    [InlineData("HasUpperCase")]      // uppercase not allowed
+    [InlineData("has_underscore")]    // underscore not allowed
+    [InlineData("-leading-hyphen")]   // must start with letter/digit
+    [InlineData("trailing-hyphen-")]  // must end with letter/digit
+    [InlineData("double--hyphen")]    // no consecutive hyphens
+    [InlineData("this-name-is-way-too-long-to-be-a-valid-azure-container-name-1234")] // > 63
+    public void AzureOptions_InvalidContainerName_Throws(string containerName) =>
+        Should.Throw<ArgumentException>(() => new AzureBlobStorageSemaphoreOptions
+        {
+            ConnectionString = "UseDevelopmentStorage=true",
+            ContainerName = containerName
         }.Validate());
 
     // ---- Consul ----
@@ -124,6 +152,22 @@ public class ProviderOptionsValidationTests
             CommandTimeoutSeconds = 0
         }.Validate());
 
+    [Fact]
+    public void PostgreSqlOptions_TableNameExceeding63Chars_Throws() =>
+        Should.Throw<ArgumentException>(() => new PostgreSqlSemaphoreOptions
+        {
+            ConnectionString = "Host=localhost",
+            TableName = new string('a', 64)
+        }.Validate());
+
+    [Fact]
+    public void PostgreSqlOptions_TableNameAt63Chars_DoesNotThrow() =>
+        Should.NotThrow(() => new PostgreSqlSemaphoreOptions
+        {
+            ConnectionString = "Host=localhost",
+            TableName = new string('a', 63)
+        }.Validate());
+
     // ---- SQL Server ----
 
     [Fact]
@@ -158,6 +202,23 @@ public class ProviderOptionsValidationTests
         {
             ConnectionString = "Server=localhost",
             CommandTimeoutSeconds = -5
+        }.Validate());
+
+    [Fact]
+    public void SqlServerOptions_TableNameAt100Chars_DoesNotThrow() =>
+        // SQL Server permits identifiers up to 128 chars, so the PostgreSQL 63-char limit must not apply here.
+        Should.NotThrow(() => new SqlServerSemaphoreOptions
+        {
+            ConnectionString = "Server=localhost",
+            TableName = new string('a', 100)
+        }.Validate());
+
+    [Fact]
+    public void SqlServerOptions_TableNameExceeding128Chars_Throws() =>
+        Should.Throw<ArgumentException>(() => new SqlServerSemaphoreOptions
+        {
+            ConnectionString = "Server=localhost",
+            TableName = new string('a', 129)
         }.Validate());
 
     // ---- ZooKeeper ----

@@ -44,6 +44,24 @@ public class SemaphoreModelTests
     }
 
     [Fact]
+    public void SemaphoreStatus_Unknown_ShouldReportNoAvailableSlots()
+    {
+        // Before the first provider read the count is unobserved, so availability must be
+        // conservative (false) rather than implying the whole semaphore is free.
+        var status = SemaphoreStatus.Unknown(maxCount: 10);
+        status.HasInformation.ShouldBeFalse();
+        status.AvailableSlots.ShouldBe(0);
+        status.HasAvailableSlots.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void SemaphoreStatus_HoldingAndWaiting_ShouldHaveInformation()
+    {
+        SemaphoreStatus.Holding(currentCount: 1, maxCount: 5).HasInformation.ShouldBeTrue();
+        SemaphoreStatus.Waiting(currentCount: 1, maxCount: 5, nextAttempt: null).HasInformation.ShouldBeTrue();
+    }
+
+    [Fact]
     public void SemaphoreStatus_AvailableSlots_ShouldReturnDifference()
     {
         var status = SemaphoreStatus.Holding(currentCount: 2, maxCount: 5);

@@ -49,8 +49,11 @@ public sealed class PostgreSqlSemaphoreOptions
         if (string.IsNullOrWhiteSpace(SchemaName))
             throw new ArgumentException("Schema name cannot be null or empty.", nameof(SchemaName));
 
-        ParameterValidation.ValidateSqlIdentifier(TableName, nameof(TableName));
-        ParameterValidation.ValidateSqlIdentifier(SchemaName, nameof(SchemaName));
+        // PostgreSQL truncates identifiers to 63 bytes (NAMEDATALEN - 1), so enforce that limit
+        // to prevent distinct long names from colliding after server-side truncation.
+        const int postgreSqlMaxIdentifierLength = 63;
+        ParameterValidation.ValidateSqlIdentifier(TableName, nameof(TableName), postgreSqlMaxIdentifierLength);
+        ParameterValidation.ValidateSqlIdentifier(SchemaName, nameof(SchemaName), postgreSqlMaxIdentifierLength);
 
         if (CommandTimeoutSeconds <= 0)
             throw new ArgumentException("Command timeout must be positive.", nameof(CommandTimeoutSeconds));

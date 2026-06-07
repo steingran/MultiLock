@@ -193,7 +193,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 }
             }
         }
-        catch (Exception ex) when (ex is not SemaphoreException)
+        catch (Exception ex) when (ex is not SemaphoreException and not OperationCanceledException)
         {
             logger.LogError(ex, "Error acquiring slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -229,7 +229,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             logger.LogInformation("Released slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error releasing slot for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -280,7 +280,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 holderId, semaphoreName);
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error updating heartbeat for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -308,7 +308,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             QueryResult<KVPair[]>? listResult = await consulClient.KV.List(prefix, queryOptions, cancellationToken);
             return listResult.Response?.Length ?? 0;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error getting current count for semaphore {SemaphoreName}", semaphoreName);
             throw new SemaphoreProviderException("Failed to get current count", ex);
@@ -344,7 +344,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             }
             return holders;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error getting holders for semaphore {SemaphoreName}", semaphoreName);
             throw new SemaphoreProviderException("Failed to get holders", ex);
@@ -367,7 +367,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             QueryResult<KVPair>? getResult = await consulClient.KV.Get(holderKey, cancellationToken);
             return getResult.Response?.Value != null;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "Error checking if holder {HolderId} is holding semaphore {SemaphoreName}",
                 holderId, semaphoreName);
@@ -386,7 +386,7 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             QueryResult<Dictionary<string, Dictionary<string, dynamic>>>? result = await consulClient.Agent.Self(cancellationToken);
             return result.StatusCode == System.Net.HttpStatusCode.OK;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Health check failed for Consul semaphore provider");
             return false;

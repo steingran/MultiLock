@@ -109,7 +109,8 @@ public class SemaphoreAcquisitionTests : IDisposable
         const int maxCount = 1;
         const int concurrency = 8;
 
-        await provider.TryAcquireAsync(SemaphoreName, HolderId, maxCount, metadata, TimeSpan.FromMinutes(5));
+        (await provider.TryAcquireAsync(SemaphoreName, HolderId, maxCount, metadata, TimeSpan.FromMinutes(5)))
+            .ShouldBeTrue("setup: holder-1 should acquire the only slot");
         var acquisition = CreateAcquisition();
 
         // Act: Task.WhenAll rethrows the first faulted task; any unexpected exception
