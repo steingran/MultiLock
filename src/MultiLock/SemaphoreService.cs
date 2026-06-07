@@ -183,6 +183,24 @@ public sealed class SemaphoreService : BackgroundService, ISemaphoreService
     }
 
     /// <inheritdoc />
+    public async Task<SemaphoreAcquisition?> AcquireScopeAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (!await TryAcquireAsync(cancellationToken))
+            return null;
+
+        // Release through the service (not the provider directly) so disposing the scope also stops
+        // the heartbeat timer and updates the published status, keeping lifecycle state consistent.
+        return new SemaphoreAcquisition(
+            HolderId,
+            DateTimeOffset.UtcNow,
+            options.Metadata,
+            () => new ValueTask(ReleaseAsync()),
+            logger);
+    }
+
+    /// <inheritdoc />
     public async Task WaitForSlotAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -421,6 +439,10 @@ public sealed class SemaphoreService : BackgroundService, ISemaphoreService
 
     private async Task<bool> TryAcquireInternalAsync(CancellationToken cancellationToken)
     {
+        // The acquire + count below are not a single atomic provider call, so ExecuteWithRetryAsync
+        // may re-run TryAcquireAsync after a transient failure of the count call. This is safe only
+        // because every provider treats a re-acquire by the same holderId as an idempotent renewal
+        // rather than a second slot; do not weaken that invariant in provider implementations.
         return await ExecuteWithRetryAsync(
             async ct =>
             {

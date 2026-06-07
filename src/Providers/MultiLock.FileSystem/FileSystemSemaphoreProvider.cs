@@ -441,7 +441,15 @@ public sealed class FileSystemSemaphoreProvider : ISemaphoreProvider
             try
             {
                 HolderFileContent? holder = ReadHolderFile(filePath);
-                if (holder != null && holder.LastHeartbeat < expiryTime)
+                if (holder == null)
+                {
+                    // Unreadable/corrupt file. Because WriteHolderFile writes atomically a holder
+                    // file is never observed half-written, so a null parse means genuine corruption.
+                    // Remove it during cleanup so corrupt files cannot accumulate indefinitely.
+                    File.Delete(filePath);
+                    logger.LogWarning("Removed corrupt holder file {FilePath}", filePath);
+                }
+                else if (holder.LastHeartbeat < expiryTime)
                 {
                     File.Delete(filePath);
                     logger.LogDebug("Cleaned up expired holder {HolderId}", holder.HolderId);
@@ -487,6 +495,34 @@ public sealed class FileSystemSemaphoreProvider : ISemaphoreProvider
     private static void WriteHolderFile(string filePath, HolderFileContent content)
     {
         string json = JsonSerializer.Serialize(content, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(filePath, json);
+
+        // Write atomically: serialise into a uniquely-named temp file in the same directory,
+        // flush it to disk, then atomically replace the target via File.Move(overwrite: true)
+        // (MoveFileEx with REPLACE_EXISTING). A crash mid-write can only ever leave behind a
+        // stray ".tmp-*" file, never a half-written holder file that CountActiveHolders would
+        // silently exclude — which would otherwise let the live count exceed maxCount.
+        string directory = Path.GetDirectoryName(filePath)!;
+        string tempPath = Path.Combine(directory, $"{Path.GetFileName(filePath)}.tmp-{Guid.NewGuid():N}");
+
+        try
+        {
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, filePath, overwrite: true);
+        }
+        catch
+        {
+            // Best-effort cleanup of the temp file if the move failed; never mask the original error.
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch
+            {
+                // Ignore cleanup failures.
+            }
+
+            throw;
+        }
     }
 }

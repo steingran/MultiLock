@@ -11,6 +11,16 @@ namespace MultiLock.Consul;
 /// Consul implementation of the semaphore provider.
 /// Uses Consul sessions and key-value store for distributed semaphore coordination.
 /// </summary>
+/// <remarks>
+/// Each holder writes its own session-bound key, so acquisition is bounded <em>optimistically</em>
+/// rather than via a single atomic compare-and-set: a strongly consistent pre-check is followed by
+/// the acquire and a strongly consistent post-check that rolls back (destroys the session, which
+/// deletes the key) if the live count exceeded <c>maxCount</c>. This never grants more than
+/// <c>maxCount</c> slots under consistent reads, but under heavy contention competing callers may
+/// transiently roll each other back and spuriously report the semaphore as full; callers retry on
+/// their normal acquisition interval. All count reads use <see cref="ConsistencyMode.Consistent"/>;
+/// correctness depends on that consistency guarantee.
+/// </remarks>
 public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposable
 {
     private readonly ConsulSemaphoreOptions options;
@@ -70,20 +80,37 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
             string? existingSessionId = GetExistingSession(semaphoreName, holderId);
             if (existingSessionId != null)
             {
-                // Renew the session
+                // Renew the session, but only treat this as a successful renewal if the holder key
+                // still exists. The session can outlive its key (e.g. the key was deleted out of
+                // band), in which case the slot is genuinely lost and we must re-acquire rather than
+                // falsely report success.
                 WriteResult<SessionEntry>? renewResult = await consulClient.Session.Renew(existingSessionId, cancellationToken);
-                if (renewResult.Response != null)
+                if (renewResult.Response != null
+                    && await UpdateHolderKeyAsync(semaphoreName, holderId, existingSessionId, metadata, cancellationToken))
                 {
-                    await UpdateHolderKeyAsync(semaphoreName, holderId, existingSessionId, metadata, cancellationToken);
                     logger.LogInformation("Renewed slot for holder {HolderId} in semaphore {SemaphoreName}",
                         holderId, semaphoreName);
                     return true;
                 }
-                // Session expired, remove it
+
+                // Renewal failed or the slot was lost: drop the stale session before re-acquiring so
+                // it does not linger and consume capacity until its TTL expires.
                 RemoveSession(semaphoreName, holderId);
+                try
+                {
+                    await consulClient.Session.Destroy(existingSessionId, cancellationToken);
+                }
+                catch (Exception destroyEx)
+                {
+                    logger.LogDebug(destroyEx,
+                        "Failed to destroy stale session {SessionId} for holder {HolderId} before re-acquire",
+                        existingSessionId, holderId);
+                }
             }
 
-            // Pre-check: fast-fail before spending a session creation round-trip.
+            // Pre-check: fast-fail before spending a session creation round-trip. This is only an
+            // optimisation hint; correctness is enforced by the post-acquisition check below, which
+            // (like this one) reads with strong consistency so the count reflects committed state.
             int currentCount = await GetCurrentCountAsync(semaphoreName, slotTimeout, cancellationToken);
             if (currentCount >= maxCount)
             {
@@ -239,7 +266,16 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 return false;
             }
 
-            await UpdateHolderKeyAsync(semaphoreName, holderId, sessionId, metadata, cancellationToken);
+            // If the holder key has been reaped the slot is lost even though the session renewed;
+            // drop local tracking and report the heartbeat as failed so the service re-acquires.
+            if (!await UpdateHolderKeyAsync(semaphoreName, holderId, sessionId, metadata, cancellationToken))
+            {
+                RemoveSession(semaphoreName, holderId);
+                logger.LogWarning("Heartbeat update for holder {HolderId} in semaphore {SemaphoreName} found no holder key - slot lost",
+                    holderId, semaphoreName);
+                return false;
+            }
+
             logger.LogDebug("Updated heartbeat for holder {HolderId} in semaphore {SemaphoreName}",
                 holderId, semaphoreName);
             return true;
@@ -264,8 +300,12 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
         try
         {
             // Consul session TTL governs expiry, so listing active KV entries gives the live count.
+            // Use a strongly consistent read (not the default, which may serve a stale follower
+            // response): the acquire path relies on this count for its pre/post capacity checks, so
+            // an under-count from a stale replica could let the holder count exceed maxCount.
             string prefix = GetSemaphorePrefix(semaphoreName);
-            QueryResult<KVPair[]>? listResult = await consulClient.KV.List(prefix, cancellationToken);
+            var queryOptions = new QueryOptions { Consistency = ConsistencyMode.Consistent };
+            QueryResult<KVPair[]>? listResult = await consulClient.KV.List(prefix, queryOptions, cancellationToken);
             return listResult.Response?.Length ?? 0;
         }
         catch (Exception ex)
@@ -298,6 +338,9 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 HolderData? holderData = JsonSerializer.Deserialize<HolderData>(Encoding.UTF8.GetString(kvPair.Value));
                 if (holderData != null)
                     holders.Add(new SemaphoreHolder(holderData.HolderId, holderData.AcquiredAt, holderData.LastHeartbeat, holderData.Metadata));
+                else
+                    logger.LogWarning("Skipping holder key {Key} in semaphore {SemaphoreName} - data could not be deserialized",
+                        kvPair.Key, semaphoreName);
             }
             return holders;
         }
@@ -411,7 +454,14 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
         return createResult.Response;
     }
 
-    private async Task UpdateHolderKeyAsync(
+    /// <summary>
+    /// Refreshes the holder key's heartbeat and metadata.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> if the holder key still exists (and the heartbeat was refreshed);
+    /// <c>false</c> if the key no longer exists, meaning the slot has been lost.
+    /// </returns>
+    private async Task<bool> UpdateHolderKeyAsync(
         string semaphoreName,
         string holderId,
         string sessionId,
@@ -422,11 +472,16 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
         QueryResult<KVPair>? getResult = await consulClient.KV.Get(holderKey, cancellationToken);
 
         if (getResult.Response?.Value == null)
-            return;
+            return false;
 
         HolderData? existingData = JsonSerializer.Deserialize<HolderData>(Encoding.UTF8.GetString(getResult.Response.Value));
         if (existingData == null)
-            return;
+        {
+            logger.LogWarning(
+                "Holder key {HolderKey} in semaphore {SemaphoreName} contained data that could not be deserialized; treating the slot as lost",
+                holderKey, semaphoreName);
+            return false;
+        }
 
         existingData.LastHeartbeat = DateTimeOffset.UtcNow;
         existingData.Metadata = new Dictionary<string, string>(metadata);
@@ -444,6 +499,10 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
         WriteResult<bool> casResult = await consulClient.KV.CAS(kvPair, cancellationToken);
         if (!casResult.Response)
             logger.LogDebug("CAS heartbeat update for holder {HolderId} in semaphore {SemaphoreName} was rejected (concurrent modification)", holderId, semaphoreName);
+
+        // The key existed; a rejected CAS just means a concurrent refresh won the race, which still
+        // means the holder is alive. Only a missing key (handled above) indicates a lost slot.
+        return true;
     }
 
     private string GetSemaphorePrefix(string semaphoreName)

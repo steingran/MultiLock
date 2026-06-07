@@ -67,11 +67,19 @@ public sealed class PostgreSqlSemaphoreProvider : ISemaphoreProvider
 
             try
             {
-                // Acquire an exclusive advisory lock scoped to this transaction.
-                // hashtext() maps the semaphore name to a stable int4 key; the advisory lock
+                // Acquire an exclusive advisory lock scoped to this transaction. The advisory lock
                 // serialises all concurrent callers for the same semaphore without requiring any
                 // existing rows in the table (unlike FOR UPDATE).
-                string advisoryLockSql = "SELECT pg_advisory_xact_lock(hashtext(@SemaphoreName))";
+                //
+                // The lock key is the first 64 bits of md5(name) rather than hashtext(name):
+                //   - hashtext() returns a 32-bit value, so distinct semaphore names collide at a
+                //     non-trivial rate (birthday bound ~2^16 names); a collision serialises two
+                //     unrelated semaphores against each other (a liveness/throughput hit).
+                //   - hashtext() is explicitly documented as not stable across PostgreSQL versions,
+                //     whereas md5() is stable, so a mixed-version cluster stays consistent.
+                // A 64-bit key makes collisions negligible and the mapping deterministic.
+                string advisoryLockSql =
+                    "SELECT pg_advisory_xact_lock(('x' || substr(md5(@SemaphoreName), 1, 16))::bit(64)::bigint)";
                 await using (var lockCommand = new NpgsqlCommand(advisoryLockSql, connection, transaction))
                 {
                     lockCommand.CommandTimeout = options.CommandTimeoutSeconds;

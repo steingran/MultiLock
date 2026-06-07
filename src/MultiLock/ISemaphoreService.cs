@@ -57,6 +57,16 @@ public interface ISemaphoreService : IAsyncDisposable
     Task ReleaseAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Attempts to acquire a slot and, on success, returns a disposable scope that releases the
+    /// slot when disposed. Enables a scoped <c>await using</c> "acquire, do work, release" pattern.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// A <see cref="SemaphoreAcquisition"/> if a slot was acquired; otherwise <c>null</c>.
+    /// </returns>
+    Task<SemaphoreAcquisition?> AcquireScopeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Waits until a slot is acquired or the operation is cancelled.
     /// </summary>
     /// <param name="timeout">The maximum time to wait for a slot.</param>

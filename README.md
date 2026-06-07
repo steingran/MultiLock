@@ -675,6 +675,18 @@ public class RateLimitedApiClient
             await _semaphore.ReleaseAsync(cancellationToken);
         }
     }
+
+    public async Task<string?> CallWithScopeAsync(CancellationToken cancellationToken)
+    {
+        // AcquireScopeAsync returns a disposable scope when a slot is acquired (null if full),
+        // so the slot is released automatically at the end of the using block - no try/finally.
+        await using SemaphoreAcquisition? scope = await _semaphore.AcquireScopeAsync(cancellationToken);
+
+        if (scope is null)
+            return null;
+
+        return await _httpClient.GetStringAsync("/api/data", cancellationToken);
+    }
 }
 ```
 

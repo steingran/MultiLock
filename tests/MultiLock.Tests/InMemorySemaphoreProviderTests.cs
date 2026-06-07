@@ -275,7 +275,15 @@ public class InMemorySemaphoreProviderTests : IDisposable
             result = await provider.TryAcquireAsync(semaphoreName, "holder-2", maxCount, metadata, shortTimeout);
             if (result)
                 break;
-            await Task.Delay(10, deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+
+            try
+            {
+                await Task.Delay(10, deadline.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
 
         // Assert

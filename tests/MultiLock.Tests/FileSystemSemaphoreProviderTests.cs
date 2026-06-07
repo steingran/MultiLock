@@ -202,5 +202,54 @@ public class FileSystemSemaphoreProviderTests : IDisposable
         await Assert.ThrowsAsync<ArgumentException>(
             () => provider.TryAcquireAsync("sem1", "h1", 1, NoMeta, TimeSpan.Zero));
     }
+
+    [Fact]
+    public async Task TryAcquireAsync_WithCorruptHolderFile_DoesNotConsumeCapacityAndCleansItUp()
+    {
+        const string sem = "sem1";
+        const string ext = ".holder";
+
+        // Plant a corrupt holder file directly in the semaphore directory, simulating a file left
+        // behind by a crash mid-write (the pre-fix failure mode that could under-count live holders
+        // and let the count exceed maxCount).
+        string semDir = Path.Combine(directoryPath, sem);
+        Directory.CreateDirectory(semDir);
+        string corruptFile = Path.Combine(semDir, $"corrupt{ext}");
+        await File.WriteAllTextAsync(corruptFile, "{ this is not valid json");
+
+        // A corrupt/unreadable file must never be counted as an active holder.
+        int countBefore = await provider.GetCurrentCountAsync(sem, TimeSpan.FromMinutes(5));
+        countBefore.ShouldBe(0);
+
+        // Fill the semaphore to capacity. The corrupt file must not have consumed a slot...
+        (await provider.TryAcquireAsync(sem, "h1", 2, NoMeta, TimeSpan.FromMinutes(5))).ShouldBeTrue();
+        (await provider.TryAcquireAsync(sem, "h2", 2, NoMeta, TimeSpan.FromMinutes(5))).ShouldBeTrue();
+
+        // ...and must not let the live count exceed maxCount.
+        (await provider.TryAcquireAsync(sem, "h3", 2, NoMeta, TimeSpan.FromMinutes(5))).ShouldBeFalse();
+
+        int count = await provider.GetCurrentCountAsync(sem, TimeSpan.FromMinutes(5));
+        count.ShouldBe(2);
+
+        // Cleanup (run on each acquire) should have removed the corrupt file so it cannot accumulate.
+        File.Exists(corruptFile).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task TryAcquireAsync_WritesAtomically_LeavesNoTempFilesBehind()
+    {
+        const string sem = "sem1";
+        const string ext = ".holder";
+
+        await provider.TryAcquireAsync(sem, "h1", 3, NoMeta, TimeSpan.FromMinutes(5));
+        await provider.UpdateHeartbeatAsync(sem, "h1", new Dictionary<string, string> { { "k", "v" } });
+
+        string semDir = Path.Combine(directoryPath, sem);
+
+        // Atomic writes go through a uniquely named ".tmp-*" file that is moved into place; none must
+        // remain after the operation completes, and exactly one valid holder file should exist.
+        Directory.GetFiles(semDir, "*.tmp-*").ShouldBeEmpty();
+        Directory.GetFiles(semDir, $"*{ext}").Length.ShouldBe(1);
+    }
 }
 
