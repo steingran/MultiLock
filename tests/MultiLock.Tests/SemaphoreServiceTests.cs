@@ -1,5 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Moq;
 using MultiLock.InMemory;
 using Shouldly;
 using Xunit;
@@ -377,6 +379,91 @@ public class SemaphoreServiceTests : IAsyncLifetime
         // Assert
         scope.ShouldBeNull();
         service.IsHolding.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task WaitForSlotAsync_WhenSlotBecomesAvailable_ReturnsOnceAcquired()
+    {
+        // Arrange: not holding yet; begin waiting (subscription is registered synchronously).
+        service = CreateService("test-semaphore", 1);
+        Task waitTask = service.WaitForSlotAsync();
+
+        // Act: acquiring broadcasts an AcquiredSlot transition that the waiter observes.
+        (await service.TryAcquireAsync()).ShouldBeTrue();
+
+        // Assert: the wait completes promptly rather than blocking forever.
+        await waitTask.WaitAsync(TimeSpan.FromSeconds(5));
+        service.IsHolding.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task TryAcquireAsync_WhenProviderThrowsTransiently_RetriesThenSucceeds()
+    {
+        // Arrange: provider fails twice then succeeds, exercising the retry + backoff path.
+        var mockProvider = new Mock<ISemaphoreProvider>();
+        mockProvider.SetupSequence(p => p.TryAcquireAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("transient-1"))
+            .ThrowsAsync(new InvalidOperationException("transient-2"))
+            .ReturnsAsync(true);
+        mockProvider.Setup(p => p.GetCurrentCountAsync(It.IsAny<string>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(1);
+
+        await using var svc = new SemaphoreService(
+            mockProvider.Object,
+            Options.Create(new SemaphoreOptions
+            {
+                SemaphoreName = "retry-semaphore",
+                MaxCount = 1,
+                AutoStart = false,
+                MaxRetryAttempts = 3,
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+                RetryMaxDelay = TimeSpan.FromMilliseconds(10),
+                EnableDetailedLogging = true
+            }),
+            NullLogger<SemaphoreService>.Instance);
+
+        // Act
+        bool acquired = await svc.TryAcquireAsync();
+
+        // Assert: succeeded on the third attempt.
+        acquired.ShouldBeTrue();
+        mockProvider.Verify(p => p.TryAcquireAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(3));
+    }
+
+    [Fact]
+    public async Task TryAcquireAsync_WhenProviderAlwaysThrows_RethrowsAfterExhaustingRetries()
+    {
+        // Arrange: provider always throws; the service should retry then surface the last exception.
+        var mockProvider = new Mock<ISemaphoreProvider>();
+        mockProvider.Setup(p => p.TryAcquireAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+                It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        await using var svc = new SemaphoreService(
+            mockProvider.Object,
+            Options.Create(new SemaphoreOptions
+            {
+                SemaphoreName = "retry-semaphore",
+                MaxCount = 1,
+                AutoStart = false,
+                MaxRetryAttempts = 2,
+                RetryBaseDelay = TimeSpan.FromMilliseconds(1),
+                RetryMaxDelay = TimeSpan.FromMilliseconds(10)
+            }),
+            NullLogger<SemaphoreService>.Instance);
+
+        // Act & Assert: the original exception propagates after MaxRetryAttempts + 1 tries.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.TryAcquireAsync());
+        mockProvider.Verify(p => p.TryAcquireAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(),
+            It.IsAny<IReadOnlyDictionary<string, string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(3));
     }
 
     private SemaphoreService CreateService(string semaphoreName, int maxCount) =>
