@@ -183,6 +183,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
                 throw;
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error acquiring slot for holder {HolderId} in semaphore {SemaphoreName}",
@@ -220,6 +224,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
 
             logger.LogInformation("Released slot for holder {HolderId} in semaphore {SemaphoreName}. Rows affected: {RowsAffected}",
                 holderId, semaphoreName, rowsAffected);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -265,6 +273,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
             int rowsAffected = await command.ExecuteNonQueryAsync(cancellationToken);
             return rowsAffected > 0;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error updating heartbeat for holder {HolderId} in semaphore {SemaphoreName}",
@@ -301,6 +313,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
             command.Parameters.AddWithValue("@ExpiryTime", expiryTime);
 
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -352,6 +368,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
 
             return holders;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error getting holders for semaphore {SemaphoreName}", semaphoreName);
@@ -385,6 +405,10 @@ public sealed class SqlServerSemaphoreProvider : ISemaphoreProvider
             command.Parameters.AddWithValue("@HolderId", holderId);
 
             return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken)) > 0;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
