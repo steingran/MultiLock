@@ -376,14 +376,18 @@ public sealed class RedisSemaphoreProvider : ISemaphoreProvider
         return connectionMultiplexer.Value.GetDatabase(options.Database);
     }
 
+    // The "{prefix:name}" hash tag forces both of a semaphore's keys into the same Redis Cluster
+    // hash slot. Without it, the holders and data keys hash to different slots and every multi-key
+    // Lua script (acquire/release/heartbeat) fails with CROSSSLOT on clustered deployments.
+    // Harmless on standalone Redis, where the braces are just part of the key name.
     private string GetHoldersKey(string semaphoreName)
     {
-        return $"{options.KeyPrefix}:{semaphoreName}:holders";
+        return $"{{{options.KeyPrefix}:{semaphoreName}}}:holders";
     }
 
     private string GetDataKey(string semaphoreName)
     {
-        return $"{options.KeyPrefix}:{semaphoreName}:data";
+        return $"{{{options.KeyPrefix}:{semaphoreName}}}:data";
     }
 
     /// <summary>

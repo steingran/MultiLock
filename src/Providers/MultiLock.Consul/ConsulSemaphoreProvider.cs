@@ -83,10 +83,23 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 // Renew the session, but only treat this as a successful renewal if the holder key
                 // still exists. The session can outlive its key (e.g. the key was deleted out of
                 // band), in which case the slot is genuinely lost and we must re-acquire rather than
-                // falsely report success.
-                WriteResult<SessionEntry>? renewResult = await consulClient.Session.Renew(existingSessionId, cancellationToken);
-                if (renewResult.Response != null
-                    && await UpdateHolderKeyAsync(semaphoreName, holderId, existingSessionId, metadata, cancellationToken))
+                // falsely report success. Session.Renew THROWS SessionExpiredException (rather than
+                // returning a null response) when the session no longer exists, so treat that the
+                // same as a failed renewal and fall through to the re-acquire path below.
+                bool renewed = false;
+                try
+                {
+                    WriteResult<SessionEntry>? renewResult = await consulClient.Session.Renew(existingSessionId, cancellationToken);
+                    renewed = renewResult.Response != null
+                        && await UpdateHolderKeyAsync(semaphoreName, holderId, existingSessionId, metadata, cancellationToken);
+                }
+                catch (SessionExpiredException ex)
+                {
+                    logger.LogWarning(ex, "Consul session {SessionId} for holder {HolderId} in semaphore {SemaphoreName} has expired",
+                        existingSessionId, holderId, semaphoreName);
+                }
+
+                if (renewed)
                 {
                     logger.LogInformation("Renewed slot for holder {HolderId} in semaphore {SemaphoreName}",
                         holderId, semaphoreName);
@@ -259,7 +272,24 @@ public sealed class ConsulSemaphoreProvider : ISemaphoreProvider, IAsyncDisposab
                 return false;
             }
 
-            WriteResult<SessionEntry>? renewResult = await consulClient.Session.Renew(sessionId, cancellationToken);
+            // Session.Renew THROWS SessionExpiredException (rather than returning a null response)
+            // when the session no longer exists, e.g. after a network partition longer than the TTL.
+            // It must be reported as a failed heartbeat (false), not as a provider error: an
+            // exception here would be retried and logged by the service while it keeps believing it
+            // holds a slot it has permanently lost.
+            WriteResult<SessionEntry>? renewResult;
+            try
+            {
+                renewResult = await consulClient.Session.Renew(sessionId, cancellationToken);
+            }
+            catch (SessionExpiredException ex)
+            {
+                RemoveSession(semaphoreName, holderId);
+                logger.LogWarning(ex, "Consul session {SessionId} for holder {HolderId} in semaphore {SemaphoreName} has expired - slot lost",
+                    sessionId, holderId, semaphoreName);
+                return false;
+            }
+
             if (renewResult.Response == null)
             {
                 RemoveSession(semaphoreName, holderId);
