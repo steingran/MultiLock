@@ -610,13 +610,19 @@ public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IA
 
     // Extracts the ZooKeeper-assigned sequence number from a sequential node name of the form
     // "{holderId}-{seq}". Holder IDs may themselves contain hyphens, so take the suffix after the
-    // LAST hyphen. Nodes whose suffix cannot be parsed (unexpected foreign nodes) sort last so
-    // they can never displace a validly created holder from its position.
+    // LAST hyphen. NumberStyles.None restricts the suffix to plain ASCII digits (no sign or
+    // whitespace), matching ZooKeeper's zero-padded suffix format exactly. Nodes whose suffix does
+    // not parse under those rules (unexpected foreign nodes) sort last so they can never displace
+    // a validly created holder from its position.
     internal static long GetSequenceNumber(string nodeName)
     {
         int separatorIndex = nodeName.LastIndexOf('-');
         if (separatorIndex >= 0 && separatorIndex < nodeName.Length - 1
-            && long.TryParse(nodeName[(separatorIndex + 1)..], out long sequence))
+            && long.TryParse(
+                nodeName.AsSpan(separatorIndex + 1),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out long sequence))
         {
             return sequence;
         }

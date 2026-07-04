@@ -21,6 +21,9 @@ public class ZooKeeperSemaphoreNodeOrderingTests
     [InlineData("trailing-hyphen-")]
     [InlineData("nohyphen")]
     [InlineData("")]
+    [InlineData("holder-+42")]
+    [InlineData("holder- 42")]
+    [InlineData("holder-42 ")]
     public void GetSequenceNumber_WithUnparsableName_SortsLast(string nodeName)
     {
         ZooKeeperSemaphoreProvider.GetSequenceNumber(nodeName).ShouldBe(long.MaxValue);
