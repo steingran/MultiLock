@@ -106,7 +106,13 @@ public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IA
 
             // Verify we're within the limit (race condition check)
             children = await zooKeeper.getChildrenAsync(semaphorePath);
-            var sortedChildren = children.Children.OrderBy(c => c).ToList();
+            // Order by the ZooKeeper-assigned sequence suffix, NOT the full node name: names are
+            // "{holderId}-{seq}", so a lexicographic sort is dominated by the holder ID and does
+            // not reflect creation order. Sorting by name would let a later creator whose ID sorts
+            // before an established holder's rank itself within maxCount and be admitted, pushing
+            // the live holder count past the limit. Sequence order makes the position check match
+            // actual acquisition order so exactly the first maxCount creators keep their slots.
+            var sortedChildren = children.Children.OrderBy(GetSequenceNumber).ToList();
             string createdNodeName = createdPath[(createdPath.LastIndexOf('/') + 1)..];
             int position = sortedChildren.IndexOf(createdNodeName);
 
@@ -600,6 +606,28 @@ public sealed class ZooKeeperSemaphoreProvider : Watcher, ISemaphoreProvider, IA
     private string GetSemaphorePath(string semaphoreName)
     {
         return $"{options.RootPath}/{semaphoreName}";
+    }
+
+    // Extracts the ZooKeeper-assigned sequence number from a sequential node name of the form
+    // "{holderId}-{seq}". Holder IDs may themselves contain hyphens, so take the suffix after the
+    // LAST hyphen. NumberStyles.None restricts the suffix to plain ASCII digits (no sign or
+    // whitespace), matching ZooKeeper's zero-padded suffix format exactly. Nodes whose suffix does
+    // not parse under those rules (unexpected foreign nodes) sort last so they can never displace
+    // a validly created holder from its position.
+    internal static long GetSequenceNumber(string nodeName)
+    {
+        int separatorIndex = nodeName.LastIndexOf('-');
+        if (separatorIndex >= 0 && separatorIndex < nodeName.Length - 1
+            && long.TryParse(
+                nodeName.AsSpan(separatorIndex + 1),
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out long sequence))
+        {
+            return sequence;
+        }
+
+        return long.MaxValue;
     }
 
     private string? GetExistingNode(string semaphoreName, string holderId)

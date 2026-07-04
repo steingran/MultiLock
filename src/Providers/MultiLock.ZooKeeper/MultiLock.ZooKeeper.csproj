@@ -14,6 +14,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="MultiLock.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
     <ProjectReference Include="..\..\MultiLock\MultiLock.csproj">
       <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
       <IncludeAssets>MultiLock.dll</IncludeAssets>
