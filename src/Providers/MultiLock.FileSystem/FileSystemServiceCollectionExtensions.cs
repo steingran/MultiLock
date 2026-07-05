@@ -3,10 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace MultiLock.FileSystem;
 
 /// <summary>
-/// Extension methods for configuring File System leader election services.
+/// Extension methods for configuring File System leader election and semaphore services.
 /// </summary>
 public static class FileSystemServiceCollectionExtensions
 {
+    // Leader Election Methods
+
     /// <summary>
     /// Adds File System leader election services to the dependency injection container.
     /// </summary>
@@ -42,5 +44,44 @@ public static class FileSystemServiceCollectionExtensions
         return services.AddFileSystemLeaderElection(
             options => options.DirectoryPath = directoryPath,
             configureLeaderElectionOptions);
+    }
+
+    // Semaphore Methods
+
+    /// <summary>
+    /// Adds File System semaphore services to the dependency injection container.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">An action to configure the file system options.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddFileSystemSemaphore(
+        this IServiceCollection services,
+        Action<FileSystemSemaphoreOptions> configureOptions,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        services.Configure(configureOptions);
+
+        if (configureSemaphoreOptions != null)
+            services.Configure(configureSemaphoreOptions);
+
+        return services.AddSemaphore<FileSystemSemaphoreProvider>();
+    }
+
+    /// <summary>
+    /// Adds File System semaphore services to the dependency injection container with directory path.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="directoryPath">The directory path for semaphore files.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddFileSystemSemaphore(
+        this IServiceCollection services,
+        string directoryPath,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddFileSystemSemaphore(
+            options => options.DirectoryPath = directoryPath,
+            configureSemaphoreOptions);
     }
 }

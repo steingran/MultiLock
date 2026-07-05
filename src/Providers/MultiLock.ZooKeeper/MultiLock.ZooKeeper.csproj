@@ -3,14 +3,18 @@
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);CopyProjectReferencesToPackage</TargetsForTfmSpecificBuildOutput>
     <PackageId>MultiLock.ZooKeeper</PackageId>
-    <Description>Apache ZooKeeper provider for MultiLock - Leader Election framework for distributed systems. This package includes the core MultiLock framework.</Description>
-    <PackageTags>leader-election;distributed-systems;high-availability;failover;zookeeper;apache;coordination</PackageTags>
+    <Description>Apache ZooKeeper provider for MultiLock - Leader Election and Distributed Semaphores framework for distributed systems. This package includes the core MultiLock framework.</Description>
+    <PackageTags>leader-election;distributed-systems;high-availability;failover;semaphore;rate-limiting;zookeeper;apache;coordination</PackageTags>
   </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="ZooKeeperNetEx" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
         <PackageReference Include="Microsoft.Extensions.Options" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="MultiLock.Tests" />
     </ItemGroup>
 
     <ItemGroup>

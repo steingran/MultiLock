@@ -70,12 +70,12 @@ public sealed class ZooKeeperLeaderElectionOptions
 
         if (SessionTimeout <= TimeSpan.Zero || SessionTimeout > TimeSpan.FromMinutes(60))
         {
-            throw new ArgumentException("Session timeout must be between 0 and 60 minutes.", nameof(SessionTimeout));
+            throw new ArgumentException("Session timeout must be greater than 0 and at most 60 minutes.", nameof(SessionTimeout));
         }
 
         if (ConnectionTimeout <= TimeSpan.Zero || ConnectionTimeout > TimeSpan.FromMinutes(10))
         {
-            throw new ArgumentException("Connection timeout must be between 0 and 10 minutes.", nameof(ConnectionTimeout));
+            throw new ArgumentException("Connection timeout must be greater than 0 and at most 10 minutes.", nameof(ConnectionTimeout));
         }
 
         if (MaxRetries < 0 || MaxRetries > 10)

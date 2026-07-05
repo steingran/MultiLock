@@ -3,10 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 namespace MultiLock.ZooKeeper;
 
 /// <summary>
-/// Extension methods for configuring ZooKeeper leader election services.
+/// Extension methods for configuring ZooKeeper leader election and semaphore services.
 /// </summary>
 public static class ZooKeeperServiceCollectionExtensions
 {
+    // Leader Election Methods
+
     /// <summary>
     /// Adds ZooKeeper leader election services to the dependency injection container.
     /// </summary>
@@ -20,11 +22,9 @@ public static class ZooKeeperServiceCollectionExtensions
         Action<LeaderElectionOptions>? configureLeaderElectionOptions = null)
     {
         services.Configure(configureOptions);
-        
+
         if (configureLeaderElectionOptions != null)
-        {
             services.Configure(configureLeaderElectionOptions);
-        }
 
         return services.AddLeaderElection<ZooKeeperLeaderElectionProvider>();
     }
@@ -93,5 +93,93 @@ public static class ZooKeeperServiceCollectionExtensions
                 options.SessionTimeout = sessionTimeout;
             },
             configureLeaderElectionOptions);
+    }
+
+    // Semaphore Methods
+
+    /// <summary>
+    /// Adds ZooKeeper semaphore services to the dependency injection container.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">An action to configure the ZooKeeper options.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddZooKeeperSemaphore(
+        this IServiceCollection services,
+        Action<ZooKeeperSemaphoreOptions> configureOptions,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        services.Configure(configureOptions);
+
+        if (configureSemaphoreOptions != null)
+            services.Configure(configureSemaphoreOptions);
+
+        return services.AddSemaphore<ZooKeeperSemaphoreProvider>();
+    }
+
+    /// <summary>
+    /// Adds ZooKeeper semaphore services to the dependency injection container with connection string.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">The ZooKeeper connection string.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddZooKeeperSemaphore(
+        this IServiceCollection services,
+        string connectionString,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddZooKeeperSemaphore(
+            options => options.ConnectionString = connectionString,
+            configureSemaphoreOptions);
+    }
+
+    /// <summary>
+    /// Adds ZooKeeper semaphore services to the dependency injection container with connection string and root path.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">The ZooKeeper connection string.</param>
+    /// <param name="rootPath">The root path for semaphore nodes.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddZooKeeperSemaphore(
+        this IServiceCollection services,
+        string connectionString,
+        string rootPath,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddZooKeeperSemaphore(
+            options =>
+            {
+                options.ConnectionString = connectionString;
+                options.RootPath = rootPath;
+            },
+            configureSemaphoreOptions);
+    }
+
+    /// <summary>
+    /// Adds ZooKeeper semaphore services to the dependency injection container with full configuration.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">The ZooKeeper connection string.</param>
+    /// <param name="rootPath">The root path for semaphore nodes.</param>
+    /// <param name="sessionTimeout">The session timeout for ZooKeeper connections.</param>
+    /// <param name="configureSemaphoreOptions">An action to configure the semaphore options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddZooKeeperSemaphore(
+        this IServiceCollection services,
+        string connectionString,
+        string rootPath,
+        TimeSpan sessionTimeout,
+        Action<SemaphoreOptions>? configureSemaphoreOptions = null)
+    {
+        return services.AddZooKeeperSemaphore(
+            options =>
+            {
+                options.ConnectionString = connectionString;
+                options.RootPath = rootPath;
+                options.SessionTimeout = sessionTimeout;
+            },
+            configureSemaphoreOptions);
     }
 }
