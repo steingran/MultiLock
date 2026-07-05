@@ -783,25 +783,13 @@ builder.Services.AddFileSystemSemaphore(
 | Failover | Automatic re-election | Slot becomes available |
 | API | `IsLeader` property | `IsHolding` property |
 
-## Testing
-
-The framework includes comprehensive test coverage:
-
-```bash
-# Run all tests
-dotnet test
-
-# Run specific test project
-dotnet test tests/MultiLock.Tests/
-dotnet test tests/MultiLock.IntegrationTests/
-```
-
 ## Samples
 
 Check out the sample applications:
 
 - **Basic Sample**: `samples/MultiLock.Sample/` - Single provider demonstration
 - **Multi-Provider Demo**: `samples/MultiLock.MultiProvider/` - Multiple instances competing
+- **Semaphore Sample**: `samples/MultiLock.SemaphoreSample/` - Rate-limited workers coordinated by a distributed semaphore
 
 ```bash
 # Run the basic sample with different providers
@@ -817,6 +805,10 @@ dotnet run zookeeper "localhost:2181"
 # Run the multi-provider demo
 cd samples/MultiLock.MultiProvider
 dotnet run
+
+# Run the semaphore sample: dotnet run [provider] [maxConcurrent]
+cd samples/MultiLock.SemaphoreSample
+dotnet run inmemory 3
 ```
 
 ## Testing
