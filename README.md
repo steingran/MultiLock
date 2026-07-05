@@ -18,6 +18,23 @@ A comprehensive .NET framework for implementing **Leader Election** and **Distri
 - **.NET 8.0** or **.NET 10.0**
 - Supported platforms: Windows, Linux, macOS
 
+## Breaking Changes
+
+### v2.0.0
+
+- **Distributed Semaphores** are introduced as a new coordination primitive alongside Leader Election. This is an additive feature and does not change existing leader-election APIs. See [Distributed Semaphores](#distributed-semaphores).
+- **Consul: `SessionLockDelay` validation tightened.** The permitted maximum for `ConsulLeaderElectionOptions.SessionLockDelay` changed from **60 minutes** to **60 seconds**, matching Consul's own upper bound for session lock-delay. A value greater than 60 seconds now throws an `ArgumentException` at startup instead of being accepted.
+
+  ```csharp
+  // No longer valid — throws ArgumentException (was previously allowed):
+  options.SessionLockDelay = TimeSpan.FromMinutes(5);
+
+  // Valid — must be between 0 and 60 seconds (default is 15 seconds):
+  options.SessionLockDelay = TimeSpan.FromSeconds(15);
+  ```
+
+  **Migration:** if you set `SessionLockDelay` above 60 seconds, lower it to 60 seconds or less. Configurations using the default (15 seconds) are unaffected.
+
 ## Architecture Overview
 
 ```
