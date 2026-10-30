@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -408,6 +408,54 @@ public class RedisIntegrationTests : IAsyncLifetime
         follower.IsLeader.ShouldBeTrue();
     }
 
+    [Fact]
+    public async Task TryAcquireLeadership_WithShortLeaseDuration_ShouldExpireWithoutHeartbeat()
+    {
+        // Arrange
+        if (!await IsRedisAvailableAsync())
+            Assert.Fail("Redis is not available");
+
+        var options = new RedisLeaderElectionOptions
+        {
+            ConnectionString = "localhost:6379",
+            KeyPrefix = keyPrefix,
+            Database = 0,
+            LeaseDuration = TimeSpan.FromSeconds(2)
+        };
+
+        using var provider1 = new RedisLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        using var provider2 = new RedisLeaderElectionProvider(
+            Options.Create(options),
+            logger);
+
+        var metadata = new Dictionary<string, string>();
+
+        // Act
+        bool acquired1 = await provider1.TryAcquireLeadershipAsync(
+            "test-group", "participant-1", metadata, TimeSpan.FromMinutes(5));
+
+        // Immediately: participant-2 should NOT be able to acquire
+        bool acquired2Immediate = await provider2.TryAcquireLeadershipAsync(
+            "test-group", "participant-2", metadata, TimeSpan.FromMinutes(5));
+
+        // Wait past the lease without any heartbeat
+        await Task.Delay(TimeSpan.FromSeconds(3));
+
+        // Now participant-2 should be able to acquire
+        bool acquired2AfterExpiry = await provider2.TryAcquireLeadershipAsync(
+            "test-group", "participant-2", metadata, TimeSpan.FromMinutes(5));
+
+        // Assert
+        acquired1.ShouldBeTrue();
+        acquired2Immediate.ShouldBeFalse();
+        acquired2AfterExpiry.ShouldBeTrue();
+
+        // Cleanup
+        await provider2.ReleaseLeadershipAsync("test-group", "participant-2");
+    }
     private static IHost CreateHost(string participantId)
     {
         return Host.CreateDefaultBuilder()

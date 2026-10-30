@@ -1,4 +1,4 @@
-﻿namespace MultiLock.Redis;
+namespace MultiLock.Redis;
 
 /// <summary>
 /// Configuration options for the Redis leader election provider.
@@ -23,6 +23,17 @@ public sealed class RedisLeaderElectionOptions
     public int Database { get; set; } = 0;
 
     /// <summary>
+    /// Gets or sets the TTL applied to the leader key in Redis on each heartbeat
+    /// renewal. 
+    /// Must be larger than <see cref="LeaderElectionOptions.HeartbeatInterval"/>
+    /// (ideally at least 2–3× to tolerate missed renewals) and should be larger
+    /// than <see cref="LeaderElectionOptions.HeartbeatTimeout"/>.
+    /// Default is 2 minutes.
+    /// </summary>
+    public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(2);
+
+
+    /// <summary>
     /// Validates the configuration options.
     /// </summary>
     /// <exception cref="ArgumentException">Thrown when configuration is invalid.</exception>
@@ -41,6 +52,11 @@ public sealed class RedisLeaderElectionOptions
         if (Database < 0)
         {
             throw new ArgumentException("Database number cannot be negative.", nameof(Database));
+        }
+
+        if (LeaseDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentException("Lease duration must be positive.", nameof(LeaseDuration));
         }
     }
 }

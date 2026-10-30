@@ -170,7 +170,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
 
             string now = DateTimeOffset.UtcNow.ToString("O");
             string metadataJson = JsonSerializer.Serialize(metadata);
-            int ttlSeconds = (int)TimeSpan.FromMinutes(2).TotalSeconds; // Default TTL extension
+            long ttlSeconds = (long)Math.Ceiling(this.options.LeaseDuration.TotalSeconds);
 
             RedisResult result = await database.ScriptEvaluateAsync(script,
                 [key],
