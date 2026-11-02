@@ -162,7 +162,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
                         data.LastHeartbeat = ARGV[2]
                         data.Metadata = cjson.decode(ARGV[3])
                         local updated = cjson.encode(data)
-                        redis.call('SET', KEYS[1], updated, 'EX', ARGV[4])
+                        redis.call('SET', KEYS[1], updated, 'PX', ARGV[4])
                         return 1
                     end
                 end
@@ -170,11 +170,11 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
 
             string now = DateTimeOffset.UtcNow.ToString("O");
             string metadataJson = JsonSerializer.Serialize(metadata);
-            long ttlSeconds = (long)Math.Ceiling(this.options.LeaseDuration.TotalSeconds);
+            long leaseMs = (long)this.options.LeaseDuration.TotalMilliseconds;
 
             RedisResult result = await database.ScriptEvaluateAsync(script,
                 [key],
-                [participantId, now, metadataJson, ttlSeconds]);
+                [participantId, now, metadataJson, leaseMs]);
 
             bool success = (int)result == 1;
 
