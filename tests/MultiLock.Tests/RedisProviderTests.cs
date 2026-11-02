@@ -139,4 +139,47 @@ public class RedisProviderTests
         await Assert.ThrowsAsync<ObjectDisposedException>(
             () => provider.IsLeaderAsync("test", "participant"));
     }
+
+    [Fact]
+    public void Options_DefaultLeaseDuration_IsTwoMinutes()
+    {
+        // Arrange & Act
+        var defaultOptions = new RedisLeaderElectionOptions();
+
+        // Assert
+        defaultOptions.LeaseDuration.ShouldBe(TimeSpan.FromMinutes(2));
+    }
+
+    [Fact]
+    public void Options_WithCustomLeaseDuration_ShouldSucceed()
+    {
+        // Arrange
+        var validOptions = new RedisLeaderElectionOptions
+        {
+            ConnectionString = "localhost:6379",
+            KeyPrefix = "test",
+            LeaseDuration = TimeSpan.FromMinutes(10)
+        };
+
+        // Act & Assert
+        validOptions.Validate(); // Should not throw
+        validOptions.LeaseDuration.ShouldBe(TimeSpan.FromMinutes(10));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Options_WithNonPositiveLeaseDuration_ShouldThrow(int seconds)
+    {
+        // Arrange
+        var invalidOptions = new RedisLeaderElectionOptions
+        {
+            ConnectionString = "localhost:6379",
+            KeyPrefix = "test",
+            LeaseDuration = TimeSpan.FromSeconds(seconds)
+        };
+
+        // Act & Assert
+        Assert.Throws<ArgumentException>(() => invalidOptions.Validate());
+    }
 }
