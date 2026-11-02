@@ -32,7 +32,6 @@ public sealed class RedisLeaderElectionOptions
     /// </summary>
     public TimeSpan LeaseDuration { get; set; } = TimeSpan.FromMinutes(2);
 
-
     /// <summary>
     /// Validates the configuration options.
     /// </summary>
