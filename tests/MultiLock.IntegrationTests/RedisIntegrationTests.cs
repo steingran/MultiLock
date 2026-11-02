@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using MultiLock.Redis;
 using MultiLock.Tests;
 using Shouldly;
+using StackExchange.Redis;
 using Xunit;
 
 namespace MultiLock.IntegrationTests;
@@ -456,6 +457,41 @@ public class RedisIntegrationTests : IAsyncLifetime
         // Cleanup
         await provider2.ReleaseLeadershipAsync("test-group", "participant-2");
     }
+
+    [Fact]
+    public async Task UpdateHeartbeat_ShouldSetTtlToLeaseDuration()
+    {
+        // Arrange
+        if (!await IsRedisAvailableAsync())
+            Assert.Fail("Redis is not available");
+
+        var options = new RedisLeaderElectionOptions
+        {
+            ConnectionString = "localhost:6379",
+            KeyPrefix = keyPrefix,
+            Database = 0,
+            LeaseDuration = TimeSpan.FromSeconds(45)
+        };
+
+        using var provider = new RedisLeaderElectionProvider(Options.Create(options), logger);
+        var metadata = new Dictionary<string, string>();
+
+        // Act
+        (await provider.TryAcquireLeadershipAsync("ttl-group", "participant-1", metadata, TimeSpan.FromSeconds(10))).ShouldBeTrue();
+        (await provider.UpdateHeartbeatAsync("ttl-group", "participant-1", metadata)).ShouldBeTrue();
+
+        await using ConnectionMultiplexer redis = await ConnectionMultiplexer.ConnectAsync("localhost:6379");
+        TimeSpan? ttl = await redis.GetDatabase().KeyTimeToLiveAsync($"{keyPrefix}:ttl-group");
+
+        // Assert
+        ttl.ShouldNotBeNull();
+        ttl.Value.ShouldBeGreaterThan(TimeSpan.FromSeconds(40));
+        ttl.Value.ShouldBeLessThanOrEqualTo(TimeSpan.FromSeconds(45));
+
+        // Cleanup
+        await provider.ReleaseLeadershipAsync("ttl-group", "participant-1");
+    }
+
     private static IHost CreateHost(string participantId)
     {
         return Host.CreateDefaultBuilder()
