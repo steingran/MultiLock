@@ -23,9 +23,9 @@ public sealed class RedisLeaderElectionOptions
     public int Database { get; set; } = 0;
 
     /// <summary>
-    /// Gets or sets the TTL applied to the leader key in Redis on each heartbeat
-    /// renewal. 
-    /// Must be larger than <see cref="LeaderElectionOptions.HeartbeatInterval"/>
+    /// Gets or sets the TTL applied to the leader key in Redis on acquire
+    /// and on each heartbeat renewal.
+    /// Should be larger than <see cref="LeaderElectionOptions.HeartbeatInterval"/>
     /// (ideally at least 2–3× to tolerate missed renewals) and should be larger
     /// than <see cref="LeaderElectionOptions.HeartbeatTimeout"/>.
     /// Default is 2 minutes.
