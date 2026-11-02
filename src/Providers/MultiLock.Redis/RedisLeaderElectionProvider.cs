@@ -66,7 +66,7 @@ public sealed class RedisLeaderElectionProvider : ILeaderElectionProvider
             string json = JsonSerializer.Serialize(leaderData);
 
             // Use SET with NX (only if not exists) and EX (expiration) for atomic operation
-            bool acquired = await database.StringSetAsync(key, json, lockTimeout, When.NotExists);
+            bool acquired = await database.StringSetAsync(key, json, options.LeaseDuration, When.NotExists);
 
             if (acquired)
             {
