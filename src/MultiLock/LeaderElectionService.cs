@@ -395,7 +395,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         // Wait for in-progress operations (timer callbacks, StopAsync and the public methods
         // that take stateLock) to complete. Use a timeout to prevent indefinite waiting.
         var waitStart = DateTime.UtcNow;
-        var maxWait = TimeSpan.FromSeconds(10);
+        TimeSpan maxWait = DisposeWaitTimeout;
 
         while (Volatile.Read(ref activeOperations) > 0 && DateTime.UtcNow - waitStart < maxWait)
         {
@@ -443,6 +443,12 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         }
     }
 
+    /// <summary>
+    /// How long <see cref="DisposeAsync"/> waits for in-progress operations before it disposes resources anyway.
+    /// Internal so that tests can use a short timeout.
+    /// </summary>
+    internal TimeSpan DisposeWaitTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
     private bool IsDisposed => Volatile.Read(ref disposeState) != 0;
 
     private void ThrowIfDisposed()
@@ -474,10 +480,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     private void EnterOperationOrThrow()
     {
-        if (!TryEnterOperation())
-        {
-            ThrowIfDisposed();
-        }
+        ObjectDisposedException.ThrowIf(!TryEnterOperation(), this);
     }
 
     private void ExitOperation()

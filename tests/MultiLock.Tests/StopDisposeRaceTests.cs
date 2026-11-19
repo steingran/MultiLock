@@ -117,6 +117,80 @@ public class StopDisposeRaceTests
         }
     }
 
+    [Fact]
+    public async Task StopAsync_WhenDisposeTimesOutWaitingForIt_ShouldNotThrow()
+    {
+        // ReleaseLeadershipAsync blocks until the gate opens, ignoring cancellation, so StopAsync
+        // outlives DisposeAsync's wait. DisposeAsync then disposes stateLock and the cancellation
+        // token source while StopAsync still holds the lock.
+        var releaseGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new SlowReleaseProvider(TimeSpan.Zero) { ReleaseGate = releaseGate };
+        LeaderElectionService service = CreateService(provider);
+        service.DisposeWaitTimeout = TimeSpan.FromMilliseconds(100);
+        (await service.TryAcquireLeadershipAsync()).ShouldBeTrue();
+
+        Task stopTask = service.StopAsync(CancellationToken.None);
+        try
+        {
+            await provider.ReleaseStarted.Task.WaitAsync(IterationTimeout);
+            await service.DisposeAsync().AsTask().WaitAsync(IterationTimeout);
+
+            // DisposeAsync gave up waiting; StopAsync is still blocked in the provider.
+            stopTask.IsCompleted.ShouldBeFalse();
+        }
+        finally
+        {
+            releaseGate.TrySetResult();
+        }
+
+        await Should.NotThrowAsync(() => stopTask.WaitAsync(IterationTimeout));
+        provider.ReleaseCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task StopAsync_WhenProviderReleaseFails_ShouldNotThrow()
+    {
+        var provider = new SlowReleaseProvider(TimeSpan.Zero) { ThrowOnRelease = true };
+        LeaderElectionService service = CreateService(provider);
+        (await service.TryAcquireLeadershipAsync()).ShouldBeTrue();
+
+        await Should.NotThrowAsync(() => service.StopAsync(CancellationToken.None));
+        provider.ReleaseStarted.Task.IsCompleted.ShouldBeTrue();
+
+        await service.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task ReleaseLeadershipAsync_WhenNotLeader_ShouldNotCallProvider()
+    {
+        var provider = new SlowReleaseProvider(TimeSpan.Zero);
+        LeaderElectionService service = CreateService(provider);
+
+        await service.ReleaseLeadershipAsync();
+
+        provider.ReleaseStarted.Task.IsCompleted.ShouldBeFalse();
+        service.IsLeader.ShouldBeFalse();
+
+        await service.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task HeartbeatFailure_ShouldLoseLeadership()
+    {
+        var provider = new SlowReleaseProvider(TimeSpan.Zero);
+        // Short heartbeat interval, long election interval, so the service does not re-acquire
+        // leadership before the test observes the loss.
+        LeaderElectionService service = CreateService(provider, heartbeatInterval: TimeSpan.FromMilliseconds(50));
+        (await service.TryAcquireLeadershipAsync()).ShouldBeTrue();
+
+        provider.HeartbeatSucceeds = false;
+
+        await TestHelpers.WaitForConditionAsync(() => !service.IsLeader, IterationTimeout, CancellationToken.None);
+        service.IsLeader.ShouldBeFalse();
+
+        await service.DisposeAsync();
+    }
+
     private static async Task RunConcurrentlyAsync(Func<Task> stop, Func<Task> dispose, bool disposeFirst)
     {
         var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -147,14 +221,15 @@ public class StopDisposeRaceTests
         return service;
     }
 
-    private static LeaderElectionService CreateService(ILeaderElectionProvider provider)
+    private static LeaderElectionService CreateService(ILeaderElectionProvider provider, TimeSpan? heartbeatInterval = null)
     {
+        // Long intervals by default, so timer callbacks do not run during the test.
+        TimeSpan heartbeat = heartbeatInterval ?? TimeSpan.FromMinutes(5);
         var options = new LeaderElectionOptions
         {
             ElectionGroup = "stop-dispose-race",
-            // Long intervals so timer callbacks do not run during the test.
-            HeartbeatInterval = TimeSpan.FromMinutes(5),
-            HeartbeatTimeout = TimeSpan.FromMinutes(10),
+            HeartbeatInterval = heartbeat,
+            HeartbeatTimeout = heartbeat * 3,
             ElectionInterval = TimeSpan.FromMinutes(5),
             AutoStart = false
         };
@@ -171,10 +246,23 @@ public class StopDisposeRaceTests
     private sealed class SlowReleaseProvider(TimeSpan releaseDelay) : ILeaderElectionProvider
     {
         private int releaseCount;
+        private volatile bool heartbeatSucceeds = true;
 
         public TaskCompletionSource ReleaseStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int ReleaseCount => Volatile.Read(ref releaseCount);
+
+        /// <summary>When set, <see cref="ReleaseLeadershipAsync"/> waits for this gate and ignores cancellation.</summary>
+        public TaskCompletionSource? ReleaseGate { get; init; }
+
+        /// <summary>When true, <see cref="ReleaseLeadershipAsync"/> throws.</summary>
+        public bool ThrowOnRelease { get; init; }
+
+        public bool HeartbeatSucceeds
+        {
+            get => heartbeatSucceeds;
+            set => heartbeatSucceeds = value;
+        }
 
         public Task<bool> TryAcquireLeadershipAsync(
             string electionGroup,
@@ -189,7 +277,21 @@ public class StopDisposeRaceTests
             CancellationToken cancellationToken = default)
         {
             ReleaseStarted.TrySetResult();
-            await Task.Delay(releaseDelay, cancellationToken);
+
+            if (ThrowOnRelease)
+            {
+                throw new InvalidOperationException("Simulated release failure.");
+            }
+
+            if (ReleaseGate != null)
+            {
+                await ReleaseGate.Task;
+            }
+            else
+            {
+                await Task.Delay(releaseDelay, cancellationToken);
+            }
+
             Interlocked.Increment(ref releaseCount);
         }
 
@@ -197,7 +299,7 @@ public class StopDisposeRaceTests
             string electionGroup,
             string participantId,
             IReadOnlyDictionary<string, string> metadata,
-            CancellationToken cancellationToken = default) => Task.FromResult(true);
+            CancellationToken cancellationToken = default) => Task.FromResult(HeartbeatSucceeds);
 
         public Task<LeaderInfo?> GetCurrentLeaderAsync(
             string electionGroup,
