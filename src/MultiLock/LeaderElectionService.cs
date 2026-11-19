@@ -12,8 +12,9 @@ namespace MultiLock;
 /// <remarks>
 /// <para>
 /// This service implements both <see cref="IDisposable"/> and <see cref="IAsyncDisposable"/> for proper resource cleanup.
-/// When disposing, the service waits for active timer callbacks to complete before releasing resources,
-/// preventing race conditions and ObjectDisposedException errors.
+/// When disposing, the service waits for in-progress operations (timer callbacks, <see cref="StopAsync"/>,
+/// <see cref="StartAsync"/>, <see cref="TryAcquireLeadershipAsync"/> and <see cref="ReleaseLeadershipAsync"/>)
+/// to complete before releasing resources, preventing race conditions and ObjectDisposedException errors.
 /// </para>
 /// <para>
 /// <strong>Disposal Best Practices:</strong>
@@ -21,7 +22,8 @@ namespace MultiLock;
 /// <item><description>Prefer using <c>await DisposeAsync()</c> when possible for proper async disposal.</description></item>
 /// <item><description>The synchronous <c>Dispose()</c> method delegates to <c>DisposeAsync()</c> and blocks until completion.</description></item>
 /// <item><description>Disposal is idempotent - calling Dispose/DisposeAsync multiple times is safe.</description></item>
-/// <item><description>The service waits up to 10 seconds for active callbacks to complete during disposal.</description></item>
+/// <item><description>The service waits up to 10 seconds for in-progress operations to complete during disposal.</description></item>
+/// <item><description><see cref="StopAsync"/> never throws <see cref="ObjectDisposedException"/>, even when it runs at the same time as disposal.</description></item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -40,8 +42,11 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     private Timer? heartbeatTimer;
     private Timer? electionTimer;
     private readonly Task broadcastTask;
-    private volatile bool isDisposed;
-    private volatile int activeCallbacks;
+    // 0 = not disposed, 1 = disposed. Set once with Interlocked so that only one caller runs the disposal body.
+    private int disposeState;
+    // Number of in-progress operations that use stateLock or other disposable resources.
+    // DisposeAsync waits for this to reach zero before it disposes those resources.
+    private int activeOperations;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LeaderElectionService"/> class.
@@ -127,23 +132,29 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// <returns>A task that represents the asynchronous operation.</returns>
     public override async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
-
-        await stateLock.WaitAsync(cancellationToken);
+        EnterOperationOrThrow();
         try
         {
-            if (heartbeatTimer != null || electionTimer != null)
+            await stateLock.WaitAsync(cancellationToken);
+            try
             {
-                return; // Already started
+                if (heartbeatTimer != null || electionTimer != null)
+                {
+                    return; // Already started
+                }
+
+                logger.LogInformation("Starting leader election service for participant {ParticipantId}", ParticipantId);
+
+                await StartElectionProcessAsync(cancellationToken);
             }
-
-            logger.LogInformation("Starting leader election service for participant {ParticipantId}", ParticipantId);
-
-            await StartElectionProcessAsync(cancellationToken);
+            finally
+            {
+                stateLock.Release();
+            }
         }
         finally
         {
-            stateLock.Release();
+            ExitOperation();
         }
     }
 
@@ -154,58 +165,64 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// <returns>A task that represents the asynchronous operation.</returns>
     public override async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        if (isDisposed)
+        // Register as an in-progress operation so that DisposeAsync waits for this method
+        // before it disposes stateLock. If disposal has already started, the service is stopped.
+        if (!TryEnterOperation())
         {
             return;
         }
 
-        await stateLock.WaitAsync(cancellationToken);
         try
         {
-            logger.LogInformation("Stopping leader election service for participant {ParticipantId}", ParticipantId);
-
-            // Release leadership if we have it BEFORE completing the broadcast channel
-            // This ensures the leadership lost event is broadcast to subscribers
-            if (currentStatus.IsLeader)
+            await stateLock.WaitAsync(cancellationToken);
+            try
             {
-                try
+                logger.LogInformation("Stopping leader election service for participant {ParticipantId}", ParticipantId);
+
+                // Release leadership if we have it BEFORE completing the broadcast channel
+                // This ensures the leadership lost event is broadcast to subscribers
+                if (currentStatus.IsLeader)
                 {
-                    await provider.ReleaseLeadershipAsync(options.ElectionGroup, ParticipantId, cancellationToken);
-                    await UpdateStatusAsync(LeadershipStatus.NoLeader(), cancellationToken);
+                    try
+                    {
+                        await provider.ReleaseLeadershipAsync(options.ElectionGroup, ParticipantId, cancellationToken);
+                        await UpdateStatusAsync(LeadershipStatus.NoLeader(), cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to release leadership during shutdown");
+                    }
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to release leadership during shutdown");
-                }
+
+                // Complete the broadcast channel writer to signal no more events will be written
+                // This allows the broadcast task to finish processing any pending events
+                // Use TryComplete to avoid exception if already completed
+                broadcastChannel.Writer.TryComplete();
+
+                // Wait for the broadcast task to finish processing all pending events
+                await broadcastTask.WaitAsync(cancellationToken);
+
+                // Now cancel the token source to stop any remaining background tasks
+                await cancellationTokenSource.CancelAsync();
+
+                // Stop timers
+                await DisposeTimerAsync(ref heartbeatTimer).ConfigureAwait(false);
+                await DisposeTimerAsync(ref electionTimer).ConfigureAwait(false);
             }
-
-            // Complete the broadcast channel writer to signal no more events will be written
-            // This allows the broadcast task to finish processing any pending events
-            // Use TryComplete to avoid exception if already completed
-            broadcastChannel.Writer.TryComplete();
-
-            // Wait for the broadcast task to finish processing all pending events
-            await broadcastTask.WaitAsync(cancellationToken);
-
-            // Now cancel the token source to stop any remaining background tasks
-            await cancellationTokenSource.CancelAsync();
-
-            // Stop timers
-            if (heartbeatTimer != null)
+            finally
             {
-                await heartbeatTimer.DisposeAsync().ConfigureAwait(false);
-                heartbeatTimer = null;
+                stateLock.Release();
             }
-
-            if (electionTimer != null)
-            {
-                await electionTimer.DisposeAsync().ConfigureAwait(false);
-                electionTimer = null;
-            }
+        }
+        catch (ObjectDisposedException) when (IsDisposed)
+        {
+            // DisposeAsync stopped waiting for this method (after its timeout) and disposed
+            // stateLock or the cancellation token source. The service is stopped either way,
+            // and shutdown must not throw.
         }
         finally
         {
-            stateLock.Release();
+            ExitOperation();
         }
     }
 
@@ -219,16 +236,22 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// </returns>
     public async Task<bool> TryAcquireLeadershipAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
-
-        await stateLock.WaitAsync(cancellationToken);
+        EnterOperationOrThrow();
         try
         {
-            return await TryAcquireLeadershipInternalAsync(cancellationToken);
+            await stateLock.WaitAsync(cancellationToken);
+            try
+            {
+                return await TryAcquireLeadershipInternalAsync(cancellationToken);
+            }
+            finally
+            {
+                stateLock.Release();
+            }
         }
         finally
         {
-            stateLock.Release();
+            ExitOperation();
         }
     }
 
@@ -239,32 +262,34 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
     /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task ReleaseLeadershipAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
-
-        await stateLock.WaitAsync(cancellationToken);
+        EnterOperationOrThrow();
         try
         {
-            if (!currentStatus.IsLeader)
+            await stateLock.WaitAsync(cancellationToken);
+            try
             {
-                return;
+                if (!currentStatus.IsLeader)
+                {
+                    return;
+                }
+
+                await provider.ReleaseLeadershipAsync(options.ElectionGroup, ParticipantId, cancellationToken);
+                await UpdateStatusAsync(LeadershipStatus.NoLeader(), cancellationToken);
+
+                // Stop heartbeat timer
+                await DisposeTimerAsync(ref heartbeatTimer).ConfigureAwait(false);
+
+                // Restart election timer
+                StartElectionTimer();
             }
-
-            await provider.ReleaseLeadershipAsync(options.ElectionGroup, ParticipantId, cancellationToken);
-            await UpdateStatusAsync(LeadershipStatus.NoLeader(), cancellationToken);
-
-            // Stop heartbeat timer
-            if (heartbeatTimer != null)
+            finally
             {
-                await heartbeatTimer.DisposeAsync().ConfigureAwait(false);
-                heartbeatTimer = null;
+                stateLock.Release();
             }
-
-            // Restart election timer
-            StartElectionTimer();
         }
         finally
         {
-            stateLock.Release();
+            ExitOperation();
         }
     }
 
@@ -346,49 +371,48 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     /// <summary>
     /// Asynchronously releases all resources used by the <see cref="LeaderElectionService"/>.
-    /// This method properly waits for any active timer callbacks to complete before disposing resources.
+    /// This method waits for in-progress operations (including timer callbacks and <see cref="StopAsync"/>)
+    /// to complete before disposing resources.
     /// </summary>
     /// <returns>A ValueTask representing the asynchronous disposal operation.</returns>
     public async ValueTask DisposeAsync()
     {
-        if (isDisposed)
+        // Set disposal flag first to prevent new operations. Only the first caller continues.
+        // Interlocked.Exchange is a full fence, so the reads of activeOperations below cannot move
+        // before this write. Together with TryEnterOperation this guarantees that every operation
+        // either sees the flag and backs out, or is counted and waited for.
+        if (Interlocked.Exchange(ref disposeState, 1) != 0)
             return;
-
-        // Set disposal flag first to prevent new operations
-        isDisposed = true;
 
         // Cancel the token source to signal shutdown
         await cancellationTokenSource.CancelAsync();
 
         // Dispose timers to prevent new callbacks from starting
         // Note: Timer.Dispose() does not wait for callbacks to complete
-        if (heartbeatTimer != null)
-        {
-            await heartbeatTimer.DisposeAsync().ConfigureAwait(false);
-            heartbeatTimer = null;
-        }
+        await DisposeTimerAsync(ref heartbeatTimer).ConfigureAwait(false);
+        await DisposeTimerAsync(ref electionTimer).ConfigureAwait(false);
 
-        if (electionTimer != null)
-        {
-            await electionTimer.DisposeAsync().ConfigureAwait(false);
-            electionTimer = null;
-        }
-
-        // Wait for any active callbacks to complete
-        // Use a timeout to prevent indefinite waiting
+        // Wait for in-progress operations (timer callbacks, StopAsync and the public methods
+        // that take stateLock) to complete. Use a timeout to prevent indefinite waiting.
         var waitStart = DateTime.UtcNow;
-        var maxWait = TimeSpan.FromSeconds(10);
+        TimeSpan maxWait = DisposeWaitTimeout;
 
-        while (activeCallbacks > 0 && DateTime.UtcNow - waitStart < maxWait)
+        while (Volatile.Read(ref activeOperations) > 0 && DateTime.UtcNow - waitStart < maxWait)
         {
             await Task.Delay(10).ConfigureAwait(false);
         }
 
-        if (activeCallbacks > 0)
+        int remainingOperations = Volatile.Read(ref activeOperations);
+        if (remainingOperations > 0)
         {
-            logger.LogWarning("Disposing LeaderElectionService with {ActiveCallbacks} active callbacks still running after {MaxWait}s timeout",
-                activeCallbacks, maxWait.TotalSeconds);
+            logger.LogWarning("Disposing LeaderElectionService with {ActiveOperations} active operations still running after {MaxWait}s timeout",
+                remainingOperations, maxWait.TotalSeconds);
         }
+
+        // An operation we waited for may have started a new timer (for example ReleaseLeadershipAsync
+        // restarts the election timer). No new operation can enter now, so dispose any such timer.
+        await DisposeTimerAsync(ref heartbeatTimer).ConfigureAwait(false);
+        await DisposeTimerAsync(ref electionTimer).ConfigureAwait(false);
 
         // Now safe to dispose the lock and other resources
         stateLock.Dispose();
@@ -419,9 +443,60 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         }
     }
 
+    /// <summary>
+    /// How long <see cref="DisposeAsync"/> waits for in-progress operations before it disposes resources anyway.
+    /// Internal so that tests can use a short timeout.
+    /// </summary>
+    internal TimeSpan DisposeWaitTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    private bool IsDisposed => Volatile.Read(ref disposeState) != 0;
+
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(isDisposed, this);
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+    }
+
+    /// <summary>
+    /// Registers an in-progress operation so that <see cref="DisposeAsync"/> waits for it
+    /// before it disposes <see cref="stateLock"/> and other resources.
+    /// </summary>
+    /// <returns><c>true</c> if the operation may continue; <c>false</c> if the service is disposed.</returns>
+    /// <remarks>
+    /// The counter is incremented before the disposed flag is checked. Interlocked.Increment is a full fence,
+    /// so either this method sees the flag set by <see cref="DisposeAsync"/>, or <see cref="DisposeAsync"/>
+    /// sees the incremented counter and waits. Every successful call must be paired with <see cref="ExitOperation"/>.
+    /// </remarks>
+    private bool TryEnterOperation()
+    {
+        Interlocked.Increment(ref activeOperations);
+        if (IsDisposed)
+        {
+            Interlocked.Decrement(ref activeOperations);
+            return false;
+        }
+
+        return true;
+    }
+
+    private void EnterOperationOrThrow()
+    {
+        ObjectDisposedException.ThrowIf(!TryEnterOperation(), this);
+    }
+
+    private void ExitOperation()
+    {
+        Interlocked.Decrement(ref activeOperations);
+    }
+
+    /// <summary>
+    /// Atomically takes the timer out of the field and disposes it, so that concurrent callers
+    /// (for example <see cref="StopAsync"/> and <see cref="DisposeAsync"/>) never dispose a timer
+    /// that another caller has already set to null.
+    /// </summary>
+    private static ValueTask DisposeTimerAsync(ref Timer? timer)
+    {
+        Timer? toDispose = Interlocked.Exchange(ref timer, null);
+        return toDispose?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 
     private async Task StartElectionProcessAsync(CancellationToken cancellationToken)
@@ -462,11 +537,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
                 await UpdateStatusAsync(LeadershipStatus.Leader(leaderInfo), cancellationToken);
 
                 // Stop election timer and start heartbeat timer
-                if (electionTimer != null)
-                {
-                    await electionTimer.DisposeAsync().ConfigureAwait(false);
-                    electionTimer = null;
-                }
+                await DisposeTimerAsync(ref electionTimer).ConfigureAwait(false);
                 StartHeartbeatTimer();
 
                 logger.LogInformation("Successfully acquired leadership for participant {ParticipantId}", ParticipantId);
@@ -512,12 +583,10 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     private async void HeartbeatTimerCallback(object? state)
     {
-        // Early exit if disposed
-        if (isDisposed)
+        // Register as an in-progress operation; exit early if disposed
+        if (!TryEnterOperation())
             return;
 
-        // Increment active callback counter
-        Interlocked.Increment(ref activeCallbacks);
         try
         {
             await HeartbeatCallbackAsync().ConfigureAwait(false);
@@ -528,19 +597,16 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         }
         finally
         {
-            // Decrement active callback counter
-            Interlocked.Decrement(ref activeCallbacks);
+            ExitOperation();
         }
     }
 
     private async void ElectionTimerCallback(object? state)
     {
-        // Early exit if disposed
-        if (isDisposed)
+        // Register as an in-progress operation; exit early if disposed
+        if (!TryEnterOperation())
             return;
 
-        // Increment active callback counter
-        Interlocked.Increment(ref activeCallbacks);
         try
         {
             await ElectionCallbackAsync().ConfigureAwait(false);
@@ -551,14 +617,13 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
         }
         finally
         {
-            // Decrement active callback counter
-            Interlocked.Decrement(ref activeCallbacks);
+            ExitOperation();
         }
     }
 
     private async Task HeartbeatCallbackAsync()
     {
-        if (isDisposed || cancellationTokenSource.Token.IsCancellationRequested)
+        if (IsDisposed || cancellationTokenSource.Token.IsCancellationRequested)
         {
             return;
         }
@@ -569,7 +634,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             try
             {
                 // Double-check disposal state after acquiring lock
-                if (isDisposed)
+                if (IsDisposed)
                     return;
 
                 if (!currentStatus.IsLeader)
@@ -591,11 +656,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
                     await UpdateStatusAsync(LeadershipStatus.NoLeader(), cancellationTokenSource.Token);
 
                     // Stop heartbeat timer and start election timer
-                    if (heartbeatTimer != null)
-                    {
-                        await heartbeatTimer.DisposeAsync().ConfigureAwait(false);
-                        heartbeatTimer = null;
-                    }
+                    await DisposeTimerAsync(ref heartbeatTimer).ConfigureAwait(false);
                     StartElectionTimer();
                 }
                 else if (options.EnableDetailedLogging)
@@ -625,7 +686,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
 
     private async Task ElectionCallbackAsync()
     {
-        if (isDisposed || cancellationTokenSource.Token.IsCancellationRequested)
+        if (IsDisposed || cancellationTokenSource.Token.IsCancellationRequested)
         {
             return;
         }
@@ -636,7 +697,7 @@ public sealed class LeaderElectionService : BackgroundService, ILeaderElectionSe
             try
             {
                 // Double-check disposal state after acquiring lock
-                if (isDisposed)
+                if (IsDisposed)
                     return;
 
                 if (currentStatus.IsLeader)
