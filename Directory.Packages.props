@@ -22,7 +22,7 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.403" PrivateAssets="All" />
     <PackageVersion Include="MinVer" Version="8.0.0" PrivateAssets="All" />
     <PackageVersion Include="Moq" Version="4.21.0" />
-    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Npgsql" Version="11.0.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="StackExchange.Redis" Version="3.4.29" />
     <PackageVersion Include="xunit" Version="2.9.3" />
